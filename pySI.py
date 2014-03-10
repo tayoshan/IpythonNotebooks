@@ -13,9 +13,6 @@ class calibrate:
         self.method = 'mle'
         return self
 
-
-
-
     def regression(self):
         self.method = 'regression'
         return self
