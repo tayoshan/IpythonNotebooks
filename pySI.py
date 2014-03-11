@@ -17,7 +17,7 @@ class calibrate:
         self.factors = factors
         if diagFilter == True:
             if self.dataForm == 'adj':
-                self.data = data[data['Origin'] != data['Destination']].reset_index(level = 0, drop = True)
+                self.data = self.data[self.data['Origin'] != self.data['Destination']].reset_index(level = 0, drop = True)
             else:
                 print 'Need to implement method to filter matrix for inter-zone data'
         self.trips = self.data[trips]
