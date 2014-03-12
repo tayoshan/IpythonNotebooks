@@ -9,7 +9,7 @@ import entropy
 
 
 class calibrate:
-    def __init__(self, data, trips, sep, dataForm='adj', diagFilter = True, cost='negexp', factors=None, constraints='unconstrained'):
+    def __init__(self, data, trips, sep, dataForm='adj', diagFilter = True, cost='negexp', factors=None, constraints={}):
         self.data = data
         self.cost = cost
         self.dataForm = dataForm
@@ -28,19 +28,35 @@ class calibrate:
         self.method = 'gravity'
         return self
 
-    def mle(self):
-        self.method = 'mle'
-        return self
-
     def regression(self):
         self.method = 'regression'
         self.results = entropy.regression(self.data, self.trips, self.cost, self.sep, self.factors, self.constraints)
         #Why does results.rsquared work but it isnt tabbale in Ipython?
         return self
 
-    def radiation(self):
-        self.method = 'radiation'
+
+    def mle(self):
+        self.method = 'mle'
+        self.destCon = False
+        self.attCon = False
+        if 'attraction' in self.constraints.keys():
+            self.destCon = True
+        if 'production' in self.constraints.keys():
+            self.attCon = True
+        observed, data, knowns = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.destCon, self.attCon)
+        if self.destCon == True & self.attCon == True:
+            data = entropy.dConstrain(observed, data, knowns, self.sep, self.factors, self.constraints)
+
+
+        if self.destCon == True & self.attCon == False:
+            data = entropy.attConstrain(observed, data, knowns, self.factors, self.constraints)
+        if self.destCon == False & self.attCon == True:
+            data = entropy.destConstrain(observed, data, knowns, self.factors, self.constraint)
+        if self.destCon == False & self.destCon == False:
+            data = entropy.unConstrain(observed, data, knowns, self.factors, self.constraints)
+
         return self
+
 
     def choice(self):
         self.method = 'choice'
@@ -50,9 +66,10 @@ class calibrate:
         self.method = 'compDest'
         return self
 
-    def check(self):
-        return self.method, self.data, self.cost, self.model
 
+    def radiation(self):
+        self.method = 'radiation'
+        return self
 
 
 

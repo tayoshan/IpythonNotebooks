@@ -15,19 +15,20 @@ def regression(data, trips, cost, sep, factors, constraints):
     first = True
 
     if factors != None:
-        for factor in factors:
-            if first == True:
-                regstr = regstr + str(factor.name)
-                first = False
-            else:
-                regstr = regstr + '+' + str(factor.name)
+        for ODs in factors.values():
+            for factor in ODs:
+                if first == True:
+                    regstr = regstr + str(factor)
+                    first = False
+                else:
+                    regstr = regstr + '+' + str(factor)
 
     if constraints != 'unconstrained':
        for constraint in constraints:
         if first != True:
-            regstr = regstr + '+' + str(constraints[constraint].name)
+            regstr = regstr + '+' + str(data[constraints[constraint]].name)
         else:
-            regstr = regstr + str(constraints[constraint].name)
+            regstr = regstr + str(data[constraints[constraint]].name)
             first = False
 
     if first != True:
@@ -47,37 +48,55 @@ def regression(data, trips, cost, sep, factors, constraints):
 
 ###MLE Code###
 
-def setup(data):
-    observed = np.sum(data["Data"]*np.log(data["Dij"]*data["Oi"]*data["Dj"]))
-    data["beta"] = .001
-    data["mu"] = 1
-    data["sigma"] = 1
-    data["Bj"] = 1.0
-    data["Ai"] = 1.0
-    data["OldAi"] = 10.0000000000
-    data["OldBj"] = 10.000000000
-    data["diff"] = abs((data["OldAi"] - data["Ai"])/data["OldAi"])
-    return observed, data
+def setup(data, trips, sep, cost, factors, constraints, destCon, attCon):
+    if destCon == True & attCon == True:
+        data["beta"] = .001
+        data["mu"] = 1
+        data["sigma"] = 1
+        data["Bj"] = 1.0
+        data["Ai"] = 1.0
+        data["OldAi"] = 10.000000000
+        data["OldBj"] = 10.000000000
+        data["diff"] = abs((data["OldAi"] - data["Ai"])/data["OldAi"])
+        Oi = data.groupby(data[constraints['production']]).aggregate({trips: np.sum})
+        data["Oi"] = Oi.ix[pd.match(data[constraints['production']], Oi.index)].reset_index()[trips]
+        Dj = data.groupby(data[constraints['attraction']]).aggregate({trips: np.sum})
+        data["Dj"] = Dj.ix[pd.match(data[constraints['attraction']], Dj.index)].reset_index()[trips]
+        params = [data[sep], data[constraints['production']], data[constraints['attraction']]]
+        knowns = data[sep]*data[constraints['production']]*data[constraints['attraction']]
+        for factor in factors:
+            knowns = knowns*data[factor + 'param']
+            params.append(data[factor + 'param'])
+        observed = np.sum(trips*np.log(knowns))
 
-def calcAi(data):
-    data["Ai"] = data["Bj"]*(data["Dj"]**data["sigma"])*np.exp(data["Dij"]*data["beta"])
+    return observed, data, knowns, params
+
+
+def calcAi(data, sep, factors):
+    Ai = data["Bj"]*data["Dj"]
+    for factor in factors['origins']:
+        Ai = Ai*factor**data[factor.name + 'param']
+
+    data["Ai"] = Ai*np.exp(data[sep]*data["beta"])
 
 #Step 3: Function to Calculate Bj values
 def calcBj(data):
-    data["Bj"] = data["Ai"]*(data["Oi"]**data["mu"])*np.exp(data["Dij"]*data["beta"])
+    Bj = data["Ai"]*data["Oi"]
+    for factor in factors['destinations']:
+        Bj = Bj*factor**data[factor.name + 'param']
 
+    data["Bj"] = Bj*np.exp(data[sep]*data["beta"])
 
 #Step 4: Function to check if Ai and Bj have stabilised, if not return to step 2
-def balanceFactors(data):
+def balanceFactors(data, sep, factors, constraints):
     its = 0
     cnvg = 1
-
     while cnvg > .0001:
         its = its + 1
-        calcAi(data)
-        AiBF = (data.groupby("Origin").aggregate({"Ai": np.sum}))
+        calcAi(data, sep, factors)
+        AiBF = (data.groupby(data[constraints['production']].name).aggregate({"Ai": np.sum}))
         AiBF["Ai"] = 1/AiBF["Ai"]
-        updates = AiBF.ix[pd.match(data["Origin"], AiBF.index), "Ai"]
+        updates = AiBF.ix[pd.match(data[constraints['production']], AiBF.index), "Ai"]
         data["Ai"] = updates.reset_index(level=0, drop=True) if(updates.notnull().any()) else data["Ai"]
         if its == 1:
             data["OldAi"] = data["Ai"]
@@ -85,10 +104,10 @@ def balanceFactors(data):
             data["diff"] = abs((data["OldAi"] - data["Ai"])/data["OldAi"])
             data["OldAi"] = data["Ai"]
 
-        calcBj(data)
-        BjBF = data.groupby("Destination").aggregate({"Bj": np.sum})
+        calcBj(data, factors)
+        BjBF = data.groupby(data[constraints['attraction']].name).aggregate({"Bj": np.sum})
         BjBF["Bj"] = 1/BjBF["Bj"]
-        updates = BjBF.ix[pd.match(data["Destination"], BjBF.index), "Bj"]
+        updates = BjBF.ix[pd.match(data[constraints['attraction']], BjBF.index), "Bj"]
         data["Bj"] = updates.reset_index(level=0, drop=True) if(updates.notnull().any()) else data["Bj"]
         if its == 1:
             data["OldBj"] = data["Bj"]
@@ -96,17 +115,16 @@ def balanceFactors(data):
             data["diff"] = abs((data["OldBj"] - data["Bj"])/data["OldBj"])
             data["OldBj"] = data["Bj"]
         cnvg = np.sum(data["diff"])
-        #print its, cnvg, data.beta.ix[0]
     return data
 
 #Step 5: Function to Calculate Tij' (flow estimates)
 def estimateFlows(data):
-    data["SIM_Estimates"] = (data["Oi"]**data["mu"])*data["Ai"]*(data["Dj"]**data["sigma"])*data["Bj"]*np.exp(data["Dij"]*data["beta"])
+    data["SIM_Estimates"] = data["Oi"]*data["Ai"]*data["Dj"]*data["Bj"]*np.exp(data["Dij"]*data["beta"])
     return data
 
 #Step 6: Function to Calculate Sum of all products of Tij' and log distances
-def estimateCum(data):
-    return np.sum(data["SIM_Estimates"]*np.log(data["Dij"]*data["Oi"]*data["Dj"]))
+def estimateCum(datam, knowns):
+    return np.sum(data["SIM_Estimates"]*np.log(knowns))
 
 #Function to compute the Jacobian matrix of parameter values
 def Jac(initParams, data):
@@ -139,21 +157,27 @@ def computef2(x, data):
 def computef3(x, data):
     return (np.sum((data.Oi**x[1])*data.Ai*data.Bj*(data.Dj**x[2])*np.exp(data.Dij*x[0])*np.log(data.Dj))- (np.sum(data.Data*np.log(data.Dj))))
 
-def dConstrain(data):
+def dConstrain(data, observed, knowns, params, sep, factors, constraints):
     its = 0
-    observed, data = setup(data)
-    data = balanceFactors(data)
-    data = estimateFlows(data)
-    estimates = estimateCum(data)
-    print abs(estimates-observed)
+    data = balanceFactors(data, sep, factors, constraints)
+    data = estimateFlows(data, params)
+    estimates = estimateCum(data, knowns)
     while abs(estimates - observed) > .0001:
         jac =  Jac([data["beta"].ix[0],data["mu"].ix[0],data["sigma"].ix[0]], data)
         data["beta"], data["mu"], data["sigma"] = jac[0], jac[1], jac[2]
-        #data["beta"] = newton(function, data["beta"].ix[0], args=(data.Data, data.Dij, data.Oi, data.Ai, data.Dj, data.Bj))
         data = balanceFactors(data)
         data = estimateFlows(data)
         estimates = estimateCum(data)
         its += 1
 
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
+    return data
+
+def attConstrain(data, observed, knowns):
+    return data
+
+def destConstrain(data, observed, knowns):
+    return data
+
+def unConstrain(data, observed, knowns):
     return data
