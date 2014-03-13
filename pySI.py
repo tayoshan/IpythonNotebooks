@@ -43,9 +43,9 @@ class calibrate:
             self.destCon = True
         if 'production' in self.constraints.keys():
             self.attCon = True
-        observed, data, knowns = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.destCon, self.attCon)
+        observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.destCon, self.attCon)
         if self.destCon == True & self.attCon == True:
-            data = entropy.dConstrain(observed, data, knowns, self.sep, self.factors, self.constraints)
+            data = entropy.dConstrain(observed, data, knowns, params, self.sep, self.factors, self.constraints)
 
 
         if self.destCon == True & self.attCon == False:
