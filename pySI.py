@@ -20,8 +20,8 @@ class calibrate:
                 self.data = self.data[self.data['Origin'] != self.data['Destination']].reset_index(level = 0, drop = True)
             else:
                 print 'Need to implement method to filter matrix for inter-zone data'
-        self.trips = self.data[trips]
-        self.sep = self.data[sep]
+        self.trips = trips
+        self.sep = sep
 
 
     def gravity(self):
@@ -35,17 +35,18 @@ class calibrate:
         return self
 
 
-    def mle(self):
+    def mle(self, initialParams={'beta':.001, 'factors':None}):
         self.method = 'mle'
         self.destCon = False
         self.attCon = False
+        self.initialParams = initialParams
         if 'attraction' in self.constraints.keys():
             self.destCon = True
         if 'production' in self.constraints.keys():
             self.attCon = True
-        observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.destCon, self.attCon)
+        observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.destCon, self.attCon, self.initialParams)
         if self.destCon == True & self.attCon == True:
-            data = entropy.dConstrain(observed, data, knowns, params, self.sep, self.factors, self.constraints)
+            data = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
 
 
         if self.destCon == True & self.attCon == False:
