@@ -49,96 +49,148 @@ def regression(data, trips, cost, sep, factors, constraints):
 
 ###MLE Code###
 
-def setup(data, trips, sep, cost, factors, constraints, destCon, attCon, initialParams):
+def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initialParams):
+
     #For doubly constrained model
-    if destCon == True & attCon == True:
+    if prodCon == True & attCon == True:
+
         #Variables for constants and deriving them
         data["Bj"] = 1.0
         data["Ai"] = 1.0
         data["OldAi"] = 10.000000000
         data["OldBj"] = 10.000000000
         data["diff"] = abs((data["OldAi"] - data["Ai"])/data["OldAi"])
+
         #Calc total outflows and inflows
         Oi = data.groupby(data[constraints['production']]).aggregate({trips: np.sum})
         data["Oi"] = Oi.ix[pd.match(data[constraints['production']], Oi.index)].reset_index()[trips]
         Dj = data.groupby(data[constraints['attraction']]).aggregate({trips: np.sum})
         data["Dj"] = Dj.ix[pd.match(data[constraints['attraction']], Dj.index)].reset_index()[trips]
-        #There is always a beta parameter so set it to user's initial value and add to param list
-        data['beta'] = initialParams['beta']
-        params = ['beta']
-        #Represents all known information in the system to include in the model
-        knowns = data[sep]*data['Oi']*data[trips]
-        #If there are additional factors
-        if factors != None:
-            for factor in factors:
-                #Include that informatio in the model
-                knowns = knowns*data[factor + 'param']
-                #Add to params list
-                params.append(factor + 'param')
-        #Observed information is sum of trips multiplied by the log of known information
-        observed = np.sum(data[trips]*np.log(knowns))
+
+
+
+
+    #For Production Constrained model
+    if prodCon == True & attCon == False:
+
+        #Calc total outflows
+        Oi = data.groupby(data[constraints['production']]).aggregate({trips: np.sum})
+        data["Oi"] = Oi.ix[pd.match(data[constraints['production']], Oi.index)].reset_index()[trips]
+
+    #For Attraction Constrained model
+    if prodCon == False & attCon == True:
+
+        #Calc total inflows
+        Dj = data.groupby(data[constraints['attraction']]).aggregate({trips: np.sum})
+        data["Dj"] = Dj.ix[pd.match(data[constraints['attraction']], Dj.index)].reset_index()[trips]
+
+    #For Unconstrained Model
+    if prodCon == False& attCon == False:
+        pass
+
+    #The following setup is for within all models
+
+    #There is always a beta parameter so set it to user's initial value and add to param list
+    data['beta'] = initialParams['beta']
+    params = ['beta']
+
+    #This is the observed data for which we want to derive parameters
+    knowns = data[sep]
+
+    #If there are additional factors we will include that observed data, add it to param list, and add a data vector for the param
+    if factors != None:
+        for count, factor in enumerate(factors):
+            #Include that informatio in the model
+            knowns = knowns*data[factor]
+            #Add to params list
+            params.append(str(factor))
+            #variable param vector
+            data[str(factor) + 'Param'] = initialParams[factor]
+
+    #Observed information is sum of trips multiplied by the log of known information
+    observed = np.sum(data[trips]*np.log(knowns))
+
     #return observed info, data, knownn info, and params list
-
-    if destCon == True & attCon == False:
-        pass
-
-    if destCon == False & attCon == True:
-        pass
-
-    if destCon == False& attCon == False:
-        pass
-
     return observed, data, knowns, params
 
 
-def calcAi(data, sep, factors):
-    Ai = data["Bj"]*data["Dj"]
+
+#Function to calculate Ai values
+def calcAi(data, sep, factors, model):
+    if model == 'dConstrained':
+        Ai = data["Bj"]*data["Dj"]
+    else:
+        Ai = data['Dij']
     if factors != None:
         for factor in factors['origins']:
             Ai = Ai*factor**data[factor.name + 'param']
     data["Ai"] = Ai*np.exp(data[sep]*data["beta"])
 
-#Step 3: Function to Calculate Bj values
-def calcBj(data, sep, factors):
-    Bj = data["Ai"]*data["Oi"]
+
+
+#Function to Calculate Bj values
+def calcBj(data, sep, factors, model):
+    if model == 'dConstrained':
+        Bj = data["Ai"]*data["Oi"]
+    else:
+        Bj = data['Dij']
     if factors != None:
         for factor in factors['destinations']:
             Bj = Bj*factor**data[factor.name + 'param']
     data["Bj"] = Bj*np.exp(data[sep]*data["beta"])
 
-#Step 4: Function to check if Ai and Bj have stabilised, if not return to step 2
-def balanceFactors(data, sep, factors, constraints):
+
+
+#Function to check if Ai and Bj have stabilised, if not return to step 2
+def balanceFactors(data, sep, factors, constraints, model):
     its = 0
     cnvg = 1
     while cnvg > .0001:
         its = its + 1
-        calcAi(data, sep, factors)
-        AiBF = (data.groupby(data[constraints['production']].name).aggregate({"Ai": np.sum}))
-        AiBF["Ai"] = 1/AiBF["Ai"]
-        updates = AiBF.ix[pd.match(data[constraints['production']], AiBF.index), "Ai"]
-        data["Ai"] = updates.reset_index(level=0, drop=True) if(updates.notnull().any()) else data["Ai"]
-        if its == 1:
-            data["OldAi"] = data["Ai"]
-        else:
-            data["diff"] = abs((data["OldAi"] - data["Ai"])/data["OldAi"])
-            data["OldAi"] = data["Ai"]
+        if model != 'attConstrained':
+            calcAi(data, sep, factors, model)
+            AiBF = (data.groupby(data[constraints['production']].name).aggregate({"Ai": np.sum}))
+            AiBF["Ai"] = 1/AiBF["Ai"]
+            updates = AiBF.ix[pd.match(data[constraints['production']], AiBF.index), "Ai"]
+            data["Ai"] = updates.reset_index(level=0, drop=True) if(updates.notnull().any()) else data["Ai"]
+            if model == 'prodConstrained':
+                break
+            if its == 1:
+                data["OldAi"] = data["Ai"]
+            else:
+                data["diff"] = abs((data["OldAi"] - data["Ai"])/data["OldAi"])
+                data["OldAi"] = data["Ai"]
 
-        calcBj(data, sep, factors)
-        BjBF = data.groupby(data[constraints['attraction']].name).aggregate({"Bj": np.sum})
-        BjBF["Bj"] = 1/BjBF["Bj"]
-        updates = BjBF.ix[pd.match(data[constraints['attraction']], BjBF.index), "Bj"]
-        data["Bj"] = updates.reset_index(level=0, drop=True) if(updates.notnull().any()) else data["Bj"]
-        if its == 1:
-            data["OldBj"] = data["Bj"]
-        else:
-            data["diff"] = abs((data["OldBj"] - data["Bj"])/data["OldBj"])
-            data["OldBj"] = data["Bj"]
+        if model != 'prodConstrained':
+            calcBj(data, sep, factors, model)
+            BjBF = data.groupby(data[constraints['attraction']].name).aggregate({"Bj": np.sum})
+            BjBF["Bj"] = 1/BjBF["Bj"]
+            updates = BjBF.ix[pd.match(data[constraints['attraction']], BjBF.index), "Bj"]
+            data["Bj"] = updates.reset_index(level=0, drop=True) if(updates.notnull().any()) else data["Bj"]
+            if its == 1:
+                if model == 'attConstrained':
+                    break
+                data["OldBj"] = data["Bj"]
+            else:
+                data["diff"] = abs((data["OldBj"] - data["Bj"])/data["OldBj"])
+                data["OldBj"] = data["Bj"]
         cnvg = np.sum(data["diff"])
     return data
 
 #Step 5: Function to Calculate Tij' (flow estimates)
-def estimateFlows(data, sep):
-    data["SIM_Estimates"] = data["Oi"]*data["Ai"]*data["Dj"]*data["Bj"]*np.exp(data["Dij"]*data[sep])
+def estimateFlows(data, sep, model, factors):
+    if model == 'dConstrained':
+        data["SIM_Estimates"] = data["Oi"]*data["Ai"]*data["Dj"]*data["Bj"]*np.exp(data[sep]*data['beta'])
+    elif model == 'prodConstrained':
+        data["SIM_Estimates"] = data["Oi"]*data["Ai"]*np.exp(data[sep]*data['beta'])
+    elif model == 'attConstrained':
+        data["SIM_Estimates"] = data["Dj"]*data["Bj"]*np.exp(data[sep]*data['beta'])
+    else:
+        data["SIM_Estimates"] = np.exp(data[sep]*data['beta'])
+    if factors != None:
+        for factor in factors:
+            data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
+
     return data
 
 #Step 6: Function to Calculate Sum of all products of Tij' and log distances
@@ -146,10 +198,10 @@ def estimateCum(data, knowns):
     return np.sum(data["SIM_Estimates"]*np.log(knowns))
 
 
-def buildLLFunctions(data, params, factors, trips, sep, model):
-    if model == 'dconstrained':
+def buildLLFunctions(data, params, factors, trips, sep, model, PV):
+    if model == 'dConstrained':
         common = data['Ai']*data['Oi']*data['Bj']*data['Dj']
-    if model == 'destConstrained':
+    if model == 'prodConstrained':
         common = data['Ai']*data['Oi']
     if model == 'attConstrained':
         common = data['Bj']*data['Dj']
@@ -162,12 +214,15 @@ def buildLLFunctions(data, params, factors, trips, sep, model):
             for factor in factors['origins'] | factors['destinations']:
                 common = common*(data[factor]**x[paramCount])
 
-    def buildFunction(common, data, trips, sep, param):
-        return lambda x: np.sum(common*np.exp(data[sep]*x[0])*np.log(data[[param]])) - np.sum(data[trips]*data[param])
+    def buildFunction(PV, common, data, trips, sep, param):
+        def function(x):
+            return np.sum(common*np.exp(data[sep]*x)*np.log(data[sep])) - np.sum(data[trips]*np.log(data[sep]))
+        return function
 
     functions = []
     for param in params:
-        functions.append(buildFunction(common, data, trips, sep, param))
+        param = buildFunction(PV, common, data, trips, sep, param)
+        functions.append(param)
 
     return functions
 
@@ -177,6 +232,7 @@ def new(paramSingle, data, params, sep, trips, functions):
     if len(functions) > 1:
         return Jac(paramSingle, data, params, sep, trips, functions)
     else:
+
         return [newton(functions[0], paramSingle[0])]
 
 
@@ -215,34 +271,41 @@ def computefBk(data, sep):
 
 
 def dConstrain(observed, data, knowns, params, trips, sep, factors, constraints):
-    model = 'dconstrained'
+    model = 'dConstrained'
     its = 0
-    data = balanceFactors(data, sep, factors, constraints)
-    data = estimateFlows(data, sep)
+    data = balanceFactors(data, sep, factors, constraints, model)
+    data = estimateFlows(data, sep, model, factors)
     estimates = estimateCum(data, knowns)
-    functions = buildLLFunctions(data, params, factors, trips, sep, model)
     while abs(estimates - observed) > .0001:
         paramSingle = []
         for param in params:
             paramSingle.append(data[param].ix[0])
+        functions = buildLLFunctions(data, params, factors, trips, sep, model, paramSingle)
         jac = new(paramSingle, data, params, sep, trips, functions)
-        print params
+        print jac, estimates, observed
         for x, param in enumerate(params):
-            print jac[x]
             data[param] = jac[x]
-        data = balanceFactors(data, sep, factors, constraints)
-        data = estimateFlows(data, sep)
+        data = balanceFactors(data, sep, factors, constraints, model)
+        data = estimateFlows(data, sep, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
 
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
     return data
 
-def attConstrain(data, observed, knowns):
+def prodConstrain(data, observed, knowns, factors, constraints):
+    model = 'prodConstrained'
+    print 'production constrained model chosen'
     return data
 
-def destConstrain(data, observed, knowns):
+
+def attConstrain(data, observed, knowns, factors, constraints):
+    model = 'attConstrained'
+    print 'attraction constrained model chosen'
     return data
 
-def unConstrain(data, observed, knowns):
+
+def unConstrain(data, observed, knowns, factors, constraints):
+    model = 'unCOnstrained'
+    print 'Unconstrained model chosen'
     return data

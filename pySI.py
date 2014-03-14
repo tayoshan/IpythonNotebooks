@@ -37,23 +37,26 @@ class calibrate:
 
     def mle(self, initialParams={'beta':.001, 'factors':None}):
         self.method = 'mle'
-        self.destCon = False
+        self.prodCon = False
         self.attCon = False
         self.initialParams = initialParams
-        if 'attraction' in self.constraints.keys():
-            self.destCon = True
         if 'production' in self.constraints.keys():
+            self.prodCon = True
+        if 'attraction' in self.constraints.keys():
             self.attCon = True
-        observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.destCon, self.attCon, self.initialParams)
-        if self.destCon == True & self.attCon == True:
+        observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.prodCon, self.attCon, self.initialParams)
+
+        if (self.prodCon == True) & (self.attCon == True):
             data = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
 
+        elif (self.prodCon == True) & (self.attCon == False):
+            data = entropy.prodConstrain(observed, data, knowns, self.factors, self.constraints)
 
-        if self.destCon == True & self.attCon == False:
+        elif (self.prodCon == False) & (self.attCon == True):
             data = entropy.attConstrain(observed, data, knowns, self.factors, self.constraints)
-        if self.destCon == False & self.attCon == True:
-            data = entropy.destConstrain(observed, data, knowns, self.factors, self.constraint)
-        if self.destCon == False & self.destCon == False:
+
+        elif (self.prodCon == False) & (self.attCon == False):
+
             data = entropy.unConstrain(observed, data, knowns, self.factors, self.constraints)
 
         return self
