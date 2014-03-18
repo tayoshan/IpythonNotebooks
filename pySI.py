@@ -35,7 +35,7 @@ class calibrate:
         return self
 
 
-    def mle(self, initialParams={'beta':.001, 'factors':None}):
+    def mle(self, initialParams):
         self.method = 'mle'
         self.prodCon = False
         self.attCon = False
@@ -44,20 +44,23 @@ class calibrate:
             self.prodCon = True
         if 'attraction' in self.constraints.keys():
             self.attCon = True
+
         observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.prodCon, self.attCon, self.initialParams)
 
         if (self.prodCon == True) & (self.attCon == True):
-            data = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
+            self.results, cor = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
 
         elif (self.prodCon == True) & (self.attCon == False):
-            data = entropy.prodConstrain(observed, data, knowns, self.factors, self.constraints)
+            self.results, cor = entropy.prodConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
 
         elif (self.prodCon == False) & (self.attCon == True):
-            data = entropy.attConstrain(observed, data, knowns, self.factors, self.constraints)
+            self.results, cor = entropy.attConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
 
         elif (self.prodCon == False) & (self.attCon == False):
+            self.results, cor = entropy.unConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
 
-            data = entropy.unConstrain(observed, data, knowns, self.factors, self.constraints)
+
+        self.results.rsquared = cor**2
 
         return self
 
