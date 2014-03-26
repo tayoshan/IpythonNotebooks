@@ -45,7 +45,10 @@ class calibrate:
         if 'attraction' in self.constraints.keys():
             self.attCon = True
 
+        entropy.checkParams(self.factors, self.initialParams)
+
         observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.prodCon, self.attCon, self.initialParams)
+
 
         if (self.prodCon == True) & (self.attCon == True):
             self.results, cor = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
