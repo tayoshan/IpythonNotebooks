@@ -5,23 +5,90 @@
 import pandas as pd
 import numpy as np
 import entropy
+import sys
 
 
 
 class calibrate:
+    '''
+    def checkCols(elf, data, trips, sep, factors, constraints):
+            userInput = [trips, sep]
+            if factors != None:
+                for key in factors.keys():
+                    for factor in factors[key]:
+                        userInput.append(facor)
+            if len(constraints) > 0:
+                for key in constraints.keys():
+                    userInput.append(constraints[key])
+                userInput = set(userInput)
+                print userInput
+                cols = set(data.columns)
+                print cols.symmetric_difference(userInput)
+            if len(cols.symmetric_difference(userInput)) > 0:
+                sys.exit('Not all input data exists in the dataset - check spelling to ensure columns and input match')
+    '''
+    def checkFactors(self, prodCon, attCon, factors):
+
+        if (prodCon == True) & (attCon == False):
+
+            try:
+                if len(factors['destinations']) < 1:
+                    sys.exit('In an prodcution-constrained model there must be at least one destination attractiveness variable ("destinations" key in factors dict)')
+            except TypeError:
+                sys.exit('In an prodcution-constrained model there must be at least one destination attractiveness variable ("destinations" key in factors dict)')
+            except KeyError:
+                sys.exit('In an prodcution-constrained model there must be at least one destination attractiveness variable ("destinations" key in factors dict)')
+        if (prodCon == False) & (attCon == True):
+
+            try:
+                 if len(factors['origins']) < 1:
+                    sys.exit('In an attraction-constrained model there must be at least one origin propulsiveness variable ("origins" key in factors dict)')
+            except TypeError:
+                sys.exit('In an attraction-constrained model there must be at least one origin propulsiveness variable ("origins" key in factors dict)')
+            except KeyError:
+                sys.exit('In an attraction-constrained model there must be at least one origin propulsiveness variable ("origins" key in factors dict)')
+
+        if (prodCon == False) & (attCon == False):
+
+            try:
+                if (len(factors['destinations']) < 1) | (len(factors['origins']) < 1):
+                    sys.exit('In an un-constrained model there must be at least one variable for the origin propulsiveness ("origins" key in factors dict) and one for the destination attractiveness ("destinations" key in factors dict)')
+            except TypeError:
+                sys.exit('In an un-constrained model there must be at least one variable for the origin propulsiveness ("origins" key in factors dict) and one for the destination attractiveness ("destinations" key in factors dict)')
+            except TypeError:
+                sys.exit('In an un-constrained model there must be at least one variable for the origin propulsiveness ("origins" key in factors dict) and one for the destination attractiveness ("destinations" key in factors dict)')
+
+    #def checkLen(self.trips, self.sep, self.factors, self):
+
     def __init__(self, data, trips, sep, dataForm='adj', diagFilter = True, cost='negexp', factors=None, constraints={}):
         self.data = data
         self.cost = cost
         self.dataForm = dataForm
         self.constraints = constraints
         self.factors = factors
+        self.trips = trips
+        self.sep = sep
+
+
+
+        #self.checkCols(self.data, self.trips, self.sep, self.factors, self.constraints)
+
         if diagFilter == True:
             if self.dataForm == 'adj':
                 self.data = self.data[self.data['Origin'] != self.data['Destination']].reset_index(level = 0, drop = True)
             else:
                 print 'Need to implement method to filter matrix for inter-zone data'
-        self.trips = trips
-        self.sep = sep
+
+        self.prodCon = False
+        self.attCon = False
+        if 'production' in self.constraints.keys():
+            self.prodCon = True
+        if 'attraction' in self.constraints.keys():
+            self.attCon = True
+
+        self.checkFactors(self.prodCon, self.attCon, self.factors)
+
+
 
 
     def gravity(self):
@@ -37,15 +104,11 @@ class calibrate:
 
     def mle(self, initialParams):
         self.method = 'mle'
-        self.prodCon = False
-        self.attCon = False
         self.initialParams = initialParams
-        if 'production' in self.constraints.keys():
-            self.prodCon = True
-        if 'attraction' in self.constraints.keys():
-            self.attCon = True
 
-        entropy.checkParams(self.factors, self.initialParams)
+        if self.factors != None:
+            entropy.checkParams(self.factors, self.initialParams)
+
 
         observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.prodCon, self.attCon, self.initialParams)
 

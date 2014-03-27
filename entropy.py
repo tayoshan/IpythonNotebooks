@@ -56,6 +56,8 @@ def regression(data, trips, cost, sep, factors, constraints):
 def checkParams(factors, initParams):
     variables = []
     for key in factors.keys():
+        if key not in ['origins', 'destinations']:
+            sys.exit('Only acceptable keys for factors are "origns" and/or "destinations"')
         for factor in factors[key]:
             variables.append(factor)
     factors = set(variables)
@@ -87,9 +89,6 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
     #For Production Constrained model
     if (prodCon == True) & (attCon == False):
 
-        if (len(factors['destinations']) < 1) | (type(factors) == None):
-            sys.exit('In a production-constrained model there must be at least one destination variable.')
-
         #Calc total outflows
         Oi = data.groupby(data[constraints['production']]).aggregate({trips: np.sum})
         data["Oi"] = Oi.ix[pd.match(data[constraints['production']], Oi.index)].reset_index()[trips]
@@ -97,18 +96,13 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
     #For Attraction Constrained model
     if (prodCon == False) & (attCon == True):
 
-        if len(factors['origins'])  < 1 | (type(factors) == None):
-            sys.exit('In a production-constrained model there must be at least one origin variable.')
-
         #Calc total inflows
         Dj = data.groupby(data[constraints['attraction']]).aggregate({trips: np.sum})
         data["Dj"] = Dj.ix[pd.match(data[constraints['attraction']], Dj.index)].reset_index()[trips]
 
     #For Unconstrained Model
     if (prodCon == False) & (attCon == False):
-
-        if (factors['destinations'] < 1) | (factors['origins'] < 1) | (type(factors) == None):
-            sys.exit('In a production-constrained model there must be at least one variable for the set of origins and the set of destinations.')
+        pass
 
     #The following setup is for within all models
 
