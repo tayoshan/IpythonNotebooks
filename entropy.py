@@ -8,6 +8,7 @@ import time
 import numdifftools as ndt
 from scipy.optimize import newton
 import sys
+import inspect
 
 
 
@@ -51,6 +52,18 @@ def regression(data, trips, cost, sep, factors, constraints):
     return results
 
 ###MLE Code###
+
+def sysDesc(data, trips, sep):
+    numObserved = len(data)
+    avgDist = np.sum(data[trips])/numObserved
+    avgDistTrav = np.sum(data[trips]*data[sep])/np.sum(data[trips])
+    #Skipped asymetry index
+
+def peStats(data, trips, sep, functions):
+    for function in functions:
+        fHess = ndt.Hessian(function(PV))
+
+
 
 
 def checkParams(factors, initParams):
@@ -141,8 +154,13 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
 
 
 #Function to calculate Ai values
-def calcAi(data, sep, factors, model):
-    Ai = np.exp(data[sep]*data["beta"])
+def calcAi(data, sep, cost, factors, model):
+    if cost == 'negexp':
+        Ai = np.exp(data[sep]*data["beta"])
+    elif cost == 'invpow':
+        Ai = (data[sep]**data["beta"])
+    else:
+        sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
 
     if model == 'dConstrained':
         Ai = Ai*data["Bj"]*data["Dj"]
@@ -156,8 +174,14 @@ def calcAi(data, sep, factors, model):
 
 
 #Function to Calculate Bj values
-def calcBj(data, sep, factors, model):
-    Bj = np.exp(data[sep]*data["beta"])
+def calcBj(data, sep, cost, factors, model):
+    if cost == 'negexp':
+        Bj = np.exp(data[sep]*data["beta"])
+    elif cost == 'invpow':
+        Bj = (data[sep]**data["beta"])
+    else:
+        sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
+
 
     if model == 'dConstrained':
         Bj = Bj*data["Ai"]*data["Oi"]
@@ -171,13 +195,13 @@ def calcBj(data, sep, factors, model):
 
 
 #Function to check if Ai and Bj have stabilised, if not return to step 2
-def balanceFactors(data, sep, factors, constraints, model):
+def balanceFactors(data, sep, cost, factors, constraints, model):
     its = 0
     cnvg = 1
-    while cnvg > .0001:
+    while cnvg > .01:
         its = its + 1
         if model != 'attConstrained':
-            calcAi(data, sep, factors, model)
+            calcAi(data, sep, cost, factors, model)
             AiBF = (data.groupby(data[constraints['production']].name).aggregate({"Ai": np.sum}))
             AiBF["Ai"] = 1/AiBF["Ai"]
             updates = AiBF.ix[pd.match(data[constraints['production']], AiBF.index), "Ai"]
@@ -191,7 +215,7 @@ def balanceFactors(data, sep, factors, constraints, model):
                 data["OldAi"] = data["Ai"]
 
         if model != 'prodConstrained':
-            calcBj(data, sep, factors, model)
+            calcBj(data, sep, cost, factors, model)
             BjBF = data.groupby(data[constraints['attraction']].name).aggregate({"Bj": np.sum})
             BjBF["Bj"] = 1/BjBF["Bj"]
             updates = BjBF.ix[pd.match(data[constraints['attraction']], BjBF.index), "Bj"]
@@ -204,28 +228,37 @@ def balanceFactors(data, sep, factors, constraints, model):
                 data["diff"] = abs((data["OldBj"] - data["Bj"])/data["OldBj"])
                 data["OldBj"] = data["Bj"]
         cnvg = np.sum(data["diff"])
+        #print cnvg, its
     return data
 
 #Step 5: Function to Calculate Tij' (flow estimates)
-def estimateFlows(data, sep, model, factors):
+def estimateFlows(data, sep, cost, model, factors):
+
+    if cost == 'negexp':
+        decay = np.exp(data[sep]*data['beta'])
+    elif cost == 'invpow':
+        decay = (data[sep]**data['beta'])
+    else:
+        sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
+
     if model == 'dConstrained':
-        data["SIM_Estimates"] = data["Oi"]*data["Ai"]*data["Dj"]*data["Bj"]*np.exp(data[sep]*data['beta'])
+        data["SIM_Estimates"] = data["Oi"]*data["Ai"]*data["Dj"]*data["Bj"]*decay
         if factors != None:
             for key in factors.keys():
                 for factor in factors[key]:
                     data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
     elif model == 'prodConstrained':
-        data["SIM_Estimates"] = data["Oi"]*data["Ai"]*np.exp(data[sep]*data['beta'])
+        data["SIM_Estimates"] = data["Oi"]*data["Ai"]*decay
         if factors != None:
             for factor in factors['destinations']:
                 data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
     elif model == 'attConstrained':
-        data["SIM_Estimates"] = data["Dj"]*data["Bj"]*np.exp(data[sep]*data['beta'])
+        data["SIM_Estimates"] = data["Dj"]*data["Bj"]*decay
         if factors != None:
             for factor in factors['origins']:
                 data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
     elif model == 'unConstrained':
-        data["SIM_Estimates"] = np.exp(data[sep]*data['beta'])
+        data["SIM_Estimates"] = decay
         if factors != None:
             for key in factors.keys():
                 for factor in factors[key]:
@@ -238,7 +271,7 @@ def estimateCum(data, knowns):
     return np.sum(data["SIM_Estimates"]*np.log(knowns))
 
 
-def buildLLFunctions(data, params, factors, trips, sep, model, PV):
+def buildLLFunctions(data, params, factors, trips, sep, cost, model, PV):
 
 
     def buildFunction(PV, common, data, trips, param, factors):
@@ -255,16 +288,32 @@ def buildLLFunctions(data, params, factors, trips, sep, model, PV):
 
         if factors != None:
             def function(x, jac=False):
-                if jac == True:
-                    return lambda x: np.sum(common*eval(f)*np.exp(data[sep]*x[0])*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
+
+
+                if cost == 'negexp':
+                    decay = np.exp(data[sep]*x[0])
+                elif cost == 'invpow':
+                    decay = (data[sep]**x[0])
                 else:
-                    return np.sum(common*eval(f)*np.exp(data[sep]*x[0])*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
+                    sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
+
+
+                #print np.sum(common*eval(f)*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
+                return np.sum(common*eval(f)*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
         else:
             def function(x, jac=False):
-                if jac == True:
-                    return lambda x: np.sum(common*np.exp(data[sep]*x)*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
+
+                if cost == 'negexp':
+                    decay = np.exp(data[sep]*x)
+                elif cost == 'invpow':
+                    decay = (data[sep]**x)
                 else:
-                    return np.sum(common*np.exp(data[sep]*x)*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
+                    sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
+
+                if jac == True:
+                    return lambda x: np.sum(common*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
+                else:
+                    return np.sum(common*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
 
         return function
 
@@ -330,6 +379,7 @@ def Jac(PV, data, params, sep, trips, functions):
     fBk = []
     for function in functions:
         fBk.append(function(PV))
+
         #common = fBkCommon(data, sep)
     #for param in PV:
         #fBk.append(np.sum(common(PV)*np.log(param))-np.sum(data[trips]*np.log(param)))
@@ -340,7 +390,7 @@ def Jac(PV, data, params, sep, trips, functions):
     #Three N by 1 arrays of Jacobian terms which are stacked into an N by N Matrix (jac)
     jac = []
     for function in functions:
-        fJac = ndt.Jacobian(function(PV, jac=True))
+        fJac = ndt.Jacobian(function)
         jac.append(fJac(PV).flatten())
     #f1Jac = ndt.Jacobian(lambda x: np.sum(data.Oi*data.Ai*data.Bj*data.Dj*np.exp(data.Dij*x[0])*np.log(data.Dij))- (np.sum(data.Data*np.log(data.Dij))))
     jac = np.array(jac)
@@ -348,6 +398,7 @@ def Jac(PV, data, params, sep, trips, functions):
 
     #N by 1 array of current parameter values
     Bk = np.array(PV)
+    print jac, fBk
     #Get new parameter estimates by subtracting from the original estimates the inverse of the product of the jacobian matrix and array of constraints
     return Bk - np.dot(np.linalg.inv(jac),fBk)
 
@@ -362,11 +413,11 @@ def fBkCommon(data, sep):
 
 
 
-def dConstrain(observed, data, knowns, params, trips, sep, factors, constraints):
+def dConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
     model = 'dConstrained'
     its = 0
-    data = balanceFactors(data, sep, factors, constraints, model)
-    data = estimateFlows(data, sep, model, factors)
+    data = balanceFactors(data, sep, cost, factors, constraints, model)
+    data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
     while abs(estimates - observed) > .01:
         paramSingle = []
@@ -375,13 +426,13 @@ def dConstrain(observed, data, knowns, params, trips, sep, factors, constraints)
                 paramSingle.append(data[str(param) + 'Param'].ix[0])
             else:
                 paramSingle.append(data[param ].ix[0])
-        functions = buildLLFunctions(data, params, factors, trips, sep, model, paramSingle)
+        functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
         updates = new(paramSingle, data, params, sep, trips, functions)
-        #print updates, estimates, observed, its, abs(estimates - observed)
+        print updates, estimates, observed, its, abs(estimates - observed)
         for x, param in enumerate(params):
             data[param] = updates[x]
-        data = balanceFactors(data, sep, factors, constraints, model)
-        data = estimateFlows(data, sep, model, factors)
+        data = balanceFactors(data, sep, cost, factors, constraints, model)
+        data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
 
@@ -389,30 +440,30 @@ def dConstrain(observed, data, knowns, params, trips, sep, factors, constraints)
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
     return data, cor
 
-def prodConstrain(observed, data, knowns, params, trips, sep, factors, constraints):
+def prodConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
     model = 'prodConstrained'
     print 'production constrained model chosen'
     its = 0
-    data = balanceFactors(data, sep, factors, constraints, model)
-    data = estimateFlows(data, sep, model, factors)
+    data = balanceFactors(data, sep, cost, factors, constraints, model)
+    data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
-    while abs(estimates - observed) > .01:
+    while abs(estimates - observed) > 1:
         paramSingle = []
         for param in params:
             if param != 'beta':
                 paramSingle.append(data[str(param) + 'Param'].ix[0])
             else:
                 paramSingle.append(data[param].ix[0])
-        functions = buildLLFunctions(data, params, factors, trips, sep, model, paramSingle)
+        functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
         updates = new(paramSingle, data, params, sep, trips, functions)
-        #print updates, its, abs(estimates - observed)
+        print updates, its, abs(estimates - observed)
         for x, param in enumerate(params):
             if param != 'beta':
                 data[str(param) + 'Param'] = updates[x]
             else:
                 data[param] = updates[x]
-        data = balanceFactors(data, sep, factors, constraints, model)
-        data = estimateFlows(data, sep, model, factors)
+        data = balanceFactors(data, sep, cost, factors, constraints, model)
+        data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
 
@@ -422,12 +473,12 @@ def prodConstrain(observed, data, knowns, params, trips, sep, factors, constrain
     return data, cor
 
 
-def attConstrain(observed, data, knowns, params, trips, sep, factors, constraints):
+def attConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
     model = 'attConstrained'
     print 'attraction constrained model chosen'
     its = 0
-    data = balanceFactors(data, sep, factors, constraints, model)
-    data = estimateFlows(data, sep, model, factors)
+    data = balanceFactors(data, sep, cost, factors, constraints, model)
+    data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
     while abs(estimates - observed) > .01:
         paramSingle = []
@@ -436,7 +487,7 @@ def attConstrain(observed, data, knowns, params, trips, sep, factors, constraint
                 paramSingle.append(data[str(param) + 'Param'].ix[0])
             else:
                 paramSingle.append(data[param].ix[0])
-        functions = buildLLFunctions(data, params, factors, trips, sep, model, paramSingle)
+        functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
         updates = new(paramSingle, data, params, sep, trips, functions)
         #print updates, its, abs(estimates - observed)
         for x, param in enumerate(params):
@@ -444,8 +495,8 @@ def attConstrain(observed, data, knowns, params, trips, sep, factors, constraint
                 data[str(param) + 'Param'] = updates[x]
             else:
                 data[param] = updates[x]
-        data = balanceFactors(data, sep, factors, constraints, model)
-        data = estimateFlows(data, sep, model, factors)
+        data = balanceFactors(data, sep, cost, factors, constraints, model)
+        data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
 
@@ -454,11 +505,11 @@ def attConstrain(observed, data, knowns, params, trips, sep, factors, constraint
     return data, cor
 
 
-def unConstrain(observed, data, knowns, params, trips, sep, factors, constraints):
+def unConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
     model = 'unConstrained'
     print 'Unconstrained model chosen'
     its = 0
-    data = estimateFlows(data, sep, model, factors)
+    data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
     while abs(estimates - observed) > .01:
         paramSingle = []
@@ -467,7 +518,7 @@ def unConstrain(observed, data, knowns, params, trips, sep, factors, constraints
                 paramSingle.append(data[str(param) + 'Param'].ix[0])
             else:
                 paramSingle.append(data[param].ix[0])
-        functions = buildLLFunctions(data, params, factors, trips, sep, model, paramSingle)
+        functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
         updates = new(paramSingle, data, params, sep, trips, functions)
         #print updates, its, abs(estimates - observed)
         for x, param in enumerate(params):
@@ -475,7 +526,7 @@ def unConstrain(observed, data, knowns, params, trips, sep, factors, constraints
                 data[str(param) + 'Param'] = updates[x]
             else:
                 data[param] = updates[x]
-        data = estimateFlows(data, sep, model, factors)
+        data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
 

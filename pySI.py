@@ -10,23 +10,24 @@ import sys
 
 
 class calibrate:
-    '''
+
     def checkCols(elf, data, trips, sep, factors, constraints):
             userInput = [trips, sep]
             if factors != None:
                 for key in factors.keys():
                     for factor in factors[key]:
-                        userInput.append(facor)
+                        userInput.append(factor)
             if len(constraints) > 0:
                 for key in constraints.keys():
                     userInput.append(constraints[key])
                 userInput = set(userInput)
-                print userInput
                 cols = set(data.columns)
-                print cols.symmetric_difference(userInput)
-            if len(cols.symmetric_difference(userInput)) > 0:
+            if userInput.issubset(cols) != True:
+                print userInput
+                print cols
+                print userInput.issubset(cols)
                 sys.exit('Not all input data exists in the dataset - check spelling to ensure columns and input match')
-    '''
+
     def checkFactors(self, prodCon, attCon, factors):
 
         if (prodCon == True) & (attCon == False):
@@ -71,7 +72,7 @@ class calibrate:
 
 
 
-        #self.checkCols(self.data, self.trips, self.sep, self.factors, self.constraints)
+        self.checkCols(self.data, self.trips, self.sep, self.factors, self.constraints)
 
         if diagFilter == True:
             if self.dataForm == 'adj':
@@ -114,16 +115,16 @@ class calibrate:
 
 
         if (self.prodCon == True) & (self.attCon == True):
-            self.results, cor = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
+            self.results, cor = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
 
         elif (self.prodCon == True) & (self.attCon == False):
-            self.results, cor = entropy.prodConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
+            self.results, cor = entropy.prodConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
 
         elif (self.prodCon == False) & (self.attCon == True):
-            self.results, cor = entropy.attConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
+            self.results, cor = entropy.attConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
 
         elif (self.prodCon == False) & (self.attCon == False):
-            self.results, cor = entropy.unConstrain(observed, data, knowns, params, self.trips, self.sep, self.factors, self.constraints)
+            self.results, cor = entropy.unConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
 
 
         self.results.rsquared = cor**2
