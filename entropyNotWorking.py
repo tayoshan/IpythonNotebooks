@@ -54,21 +54,19 @@ def regression(data, trips, cost, sep, factors, constraints):
 
 ###MLE Code###
 
-#Calculate descriptive statistics
 def sysDesc(data, trips, sep):
     numObserved = len(data)
     avgDist = np.sum(data[trips])/numObserved
     avgDistTrav = np.sum(data[trips]*data[sep])/np.sum(data[trips])
     #Skipped asymetry index
 
-#Calculate parameter estimate statistics
 def peStats(data, trips, sep, functions):
     for function in functions:
         fHess = ndt.Hessian(function(PV))
 
 
 
-#Check to make sure factors all have been assigned initial parameters
+
 def checkParams(factors, initParams):
     variables = []
     for key in factors.keys():
@@ -82,7 +80,6 @@ def checkParams(factors, initParams):
     if len(factors.symmetric_difference(params)) > 0:
         sys.exit('The initial paramter keys and the factor names must be symmetrical (excluding beta)')
 
-#Set up balancing factors, total in/out flows, and parameters
 def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initialParams):
 
     #For doubly constrained model
@@ -245,8 +242,11 @@ def estimateFlows(data, sep, cost, model, factors):
 
     if cost == 'negexp':
         decay = np.exp(data[sep]*data['beta'])
+
+
     elif cost == 'invpow':
         decay = (data[sep]**data['beta'])
+
     else:
         sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
 
@@ -282,18 +282,11 @@ def estimateCum(data, knowns):
     return np.sum(data["SIM_Estimates"]*np.log(knowns))
 
 
-def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constraints, knowns):
-    for x, param in enumerate(params):
-        if param != 'beta':
-            data[str(param) + 'Param'] = PV[x]
-        else:
-            data[param] = PV[x]
-    data = balanceFactors(data, sep, cost, factors, constraints, model)
-    data = estimateFlows(data, sep, cost, model, factors)
-    estimates = estimateCum(data, knowns)
+def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model):
+
 
     def buildFunction(common, data, trips, param, factors, beta=False):
-
+        x,y = PV
         if factors != None:
             for key in factors.keys():
                 for factor in factors[key]:
@@ -302,7 +295,7 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
                         if count+1 != last:
                             f += 'data["'+ str(factor) + '"]**x[' + str(count+1) + ']*'
                         else:
-                            f = data[str(factor) ]**PV[1]
+                            f = data[str(factor) ]**y
 
         if factors != None:
 
@@ -310,7 +303,7 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
             if cost == 'negexp':
                 decay = np.exp(data[sep]*x[0])
             elif cost == 'invpow':
-                decay = (data[sep]**PV[0])
+                decay = (data[sep]**x)
             else:
                 sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
 
@@ -328,7 +321,7 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
             if cost == 'negexp':
                 decay = np.exp(data[sep]*x)
             elif cost == 'invpow':
-                decay = (data[sep]**PV[0])
+                decay = (data[sep]**x)
             else:
                 sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
 
@@ -442,66 +435,77 @@ def fBkCommon(data, sep):
 def dConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
     model = 'dConstrained'
     print 'doubly constrained model chosen'
+    its = 0
     data = balanceFactors(data, sep, cost, factors, constraints, model)
     data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
-    its = 0
     print estimates, observed
-
-    while abs(estimates - observed) > .000001:
-
+    while abs(estimates - observed) > 1:
         paramSingle = []
         for param in params:
             if param != 'beta':
                 paramSingle.append(data[str(param) + 'Param'].ix[0])
             else:
-                paramSingle.append(data[param].ix[0])
-
-        updates = fsolve(buildLLFunctions, paramSingle, (data, params, factors, trips, sep, cost, model, constraints, knowns))
-        print updates, abs(estimates - observed)
-
+                paramSingle.append(data[param ].ix[0])
+        functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
+        updates = new(paramSingle, data, params, sep, trips, functions)
+        print updates, estimates, observed, its, abs(estimates - observed)
+        for x, param in enumerate(params):
+            data[param] = updates[x]
         data = balanceFactors(data, sep, cost, factors, constraints, model)
         data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
-        if its > 25:
+        if (abs(paramSingle[0]- updates[0])/abs(updates[0])) < .0000001:
             break
 
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
     return data, cor
 
-
-
 def prodConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
     model = 'prodConstrained'
     print 'production constrained model chosen'
+    its = 0
     data = balanceFactors(data, sep, cost, factors, constraints, model)
     data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
-    its = 0
 
-    while abs(estimates - observed) > .1:
+    while abs(estimates - observed) > 1:
         paramSingle = []
         for param in params:
             if param != 'beta':
                 paramSingle.append(data[str(param) + 'Param'].ix[0])
             else:
                 paramSingle.append(data[param].ix[0])
+        #functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
+        #print functions
+        def f(p):
+            return abs(np.sum(np.array(buildLLFunctions(p, data, params, factors, trips, sep, cost, model))**2)-0)
+        if its ==0:
+            p = fmin(f, [0,1])
+        else:
+            p = fmin(f, p)
+        print p
+        p = fsolve(buildLLFunctions, p, (data, params, factors, trips, sep, cost, model))
+        print p
 
-
-        updates = fsolve(buildLLFunctions, paramSingle, (data, params, factors, trips, sep, cost, model, constraints, knowns))
-        print updates, abs(estimates - observed)
-
+        #updates = new(paramSingle, data, params, sep, trips, functions)
+        print p, its, abs(estimates - observed)
+        for x, param in enumerate(params):
+            if param != 'beta':
+                data[str(param) + 'Param'] = p[x]
+            else:
+                data[param] = p[x]
         data = balanceFactors(data, sep, cost, factors, constraints, model)
         data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
-        if its > 25:
-            break
-
+        #if (abs(paramSingle[0]- updates[0])/abs(updates[0])) < .0000001:
+            #break
 
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
+
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
     return data, cor
 
@@ -509,31 +513,31 @@ def prodConstrain(observed, data, knowns, params, trips, sep, cost, factors, con
 def attConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
     model = 'attConstrained'
     print 'attraction constrained model chosen'
+    its = 0
     data = balanceFactors(data, sep, cost, factors, constraints, model)
     data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
-    its = 0
-
-    while abs(estimates - observed) > .1:
-
+    while abs(estimates - observed) > .01:
         paramSingle = []
         for param in params:
             if param != 'beta':
                 paramSingle.append(data[str(param) + 'Param'].ix[0])
             else:
                 paramSingle.append(data[param].ix[0])
-
         functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
         updates = new(paramSingle, data, params, sep, trips, functions)
-        print updates, abs(estimates - observed)
-
+        #print updates, its, abs(estimates - observed)
+        for x, param in enumerate(params):
+            if param != 'beta':
+                data[str(param) + 'Param'] = updates[x]
+            else:
+                data[param] = updates[x]
         data = balanceFactors(data, sep, cost, factors, constraints, model)
         data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
-        if its > 25:
+        if (abs(paramSingle[0]- updates[0])/abs(updates[0])) < .0000001:
             break
-
 
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
@@ -543,26 +547,28 @@ def attConstrain(observed, data, knowns, params, trips, sep, cost, factors, cons
 def unConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
     model = 'unConstrained'
     print 'Unconstrained model chosen'
+    its = 0
     data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
-    its = 0
-
-    while abs(estimates - observed) > .1:
+    while abs(estimates - observed) > .01:
         paramSingle = []
         for param in params:
             if param != 'beta':
                 paramSingle.append(data[str(param) + 'Param'].ix[0])
             else:
                 paramSingle.append(data[param].ix[0])
-
         functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
         updates = new(paramSingle, data, params, sep, trips, functions)
-        print updates, abs(estimates - observed)
-
+        #print updates, its, abs(estimates - observed)
+        for x, param in enumerate(params):
+            if param != 'beta':
+                data[str(param) + 'Param'] = updates[x]
+            else:
+                data[param] = updates[x]
         data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
         its += 1
-        if its > 25:
+        if (abs(paramSingle[0]- updates[0])/abs(updates[0])) < .0000001:
             break
 
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])

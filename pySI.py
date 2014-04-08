@@ -11,7 +11,7 @@ import sys
 
 class calibrate:
 
-    def checkCols(elf, data, trips, sep, factors, constraints):
+    def checkCols(self, data, trips, sep, factors, constraints):
             userInput = [trips, sep]
             if factors != None:
                 for key in factors.keys():
@@ -113,6 +113,8 @@ class calibrate:
 
         observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.prodCon, self.attCon, self.initialParams)
 
+        if self.factors != None:
+            entropy.checkParams(self.factors, self.initialParams)
 
         if (self.prodCon == True) & (self.attCon == True):
             self.results, cor = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
