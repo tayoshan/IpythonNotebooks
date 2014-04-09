@@ -11,6 +11,7 @@ import sys
 import inspect
 from scipy.optimize import fsolve
 from scipy.optimize import fmin
+import math
 
 
 ###Regression code###
@@ -62,9 +63,16 @@ def sysDesc(data, trips, sep):
     #Skipped asymetry index
 
 #Calculate parameter estimate statistics
-def peStats(data, trips, sep, functions):
-    for function in functions:
-        fHess = ndt.Hessian(function(PV))
+def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates):
+    firstD = buildLLFunctions([PV], data, params, factors, trips, sep, cost, model, constraints, knowns)
+    recalc = buildLLFunctions([PV+.001], data, params, factors, trips, sep, cost, model, constraints, knowns)
+    #print firstD, recalc
+    diff = firstD[0]-recalc[0]
+    #print diff
+    secondD = -(1/(diff/.001))
+    #print secondD
+    print math.sqrt(secondD)
+    data[params[0]] = PV
 
 
 
@@ -389,67 +397,14 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
     return functions
 
 
-
-def new(paramSingle, data, params, sep, trips, functions):
-    if len(functions) > 1:
-        return Jac(paramSingle, data, params, sep, trips, functions)
-    else:
-
-
-        return [newton(functions[0], paramSingle[0])]
-
-
-
-#Function to compute the Jacobian matrix of parameter values
-def Jac(PV, data, params, sep, trips, functions):
-    fBk = []
-    for function in functions:
-        fBk.append(function(PV))
-
-        #common = fBkCommon(data, sep)
-    #for param in PV:
-        #fBk.append(np.sum(common(PV)*np.log(param))-np.sum(data[trips]*np.log(param)))
-    #N by 1 array of functions representing the constraints which need to be met to obtain parameters
-    fBk = np.array(fBk)
-
-
-    #Three N by 1 arrays of Jacobian terms which are stacked into an N by N Matrix (jac)
-    jac = []
-    for function in functions:
-        fJac = ndt.Jacobian(function)
-        jac.append(fJac(PV).flatten())
-    #f1Jac = ndt.Jacobian(lambda x: np.sum(data.Oi*data.Ai*data.Bj*data.Dj*np.exp(data.Dij*x[0])*np.log(data.Dij))- (np.sum(data.Data*np.log(data.Dij))))
-    jac = np.array(jac)
-
-
-    #N by 1 array of current parameter values
-    Bk = np.array(PV)
-    #print jac, fBk
-    #Get new parameter estimates by subtracting from the original estimates the inverse of the product of the jacobian matrix and array of constraints
-    return Bk - (2*np.dot(np.linalg.inv(jac),fBk))
-
-'''
-#Commputes the value of one
-def fBkCommon(data, sep):
-    paramCount = 1
-    common = lambda PV: data.Oi*data.Ai*data.Bj*data.Dj*np.exp(data[sep]*PV[0])
-    return common
-'''
-
-
-
-
-def dConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
-    model = 'dConstrained'
-    print 'doubly constrained model chosen'
+def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, model):
+    print 'Model selected: ' + model
     data = balanceFactors(data, sep, cost, factors, constraints, model)
     data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
     its = 0
-    print estimates, observed
 
-    while abs(estimates - observed) > .000001:
-
+    while abs(estimates - observed) > .001:
         paramSingle = []
         for param in params:
             if param != 'beta':
@@ -466,105 +421,7 @@ def dConstrain(observed, data, knowns, params, trips, sep, cost, factors, constr
         its += 1
         if its > 25:
             break
-
-    print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
-    cor = pearsonr(data.SIM_Estimates, data.Data)[0]
-    return data, cor
-
-
-
-def prodConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
-    model = 'prodConstrained'
-    print 'production constrained model chosen'
-    data = balanceFactors(data, sep, cost, factors, constraints, model)
-    data = estimateFlows(data, sep, cost, model, factors)
-    estimates = estimateCum(data, knowns)
-    its = 0
-
-    while abs(estimates - observed) > .1:
-        paramSingle = []
-        for param in params:
-            if param != 'beta':
-                paramSingle.append(data[str(param) + 'Param'].ix[0])
-            else:
-                paramSingle.append(data[param].ix[0])
-
-
-        updates = fsolve(buildLLFunctions, paramSingle, (data, params, factors, trips, sep, cost, model, constraints, knowns))
-        print updates, abs(estimates - observed)
-
-        data = balanceFactors(data, sep, cost, factors, constraints, model)
-        data = estimateFlows(data, sep, cost, model, factors)
-        estimates = estimateCum(data, knowns)
-        its += 1
-        if its > 25:
-            break
-
-
-    print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
-    cor = pearsonr(data.SIM_Estimates, data.Data)[0]
-    return data, cor
-
-
-def attConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
-    model = 'attConstrained'
-    print 'attraction constrained model chosen'
-    data = balanceFactors(data, sep, cost, factors, constraints, model)
-    data = estimateFlows(data, sep, cost, model, factors)
-    estimates = estimateCum(data, knowns)
-    its = 0
-
-    while abs(estimates - observed) > .1:
-
-        paramSingle = []
-        for param in params:
-            if param != 'beta':
-                paramSingle.append(data[str(param) + 'Param'].ix[0])
-            else:
-                paramSingle.append(data[param].ix[0])
-
-        functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
-        updates = new(paramSingle, data, params, sep, trips, functions)
-        print updates, abs(estimates - observed)
-
-        data = balanceFactors(data, sep, cost, factors, constraints, model)
-        data = estimateFlows(data, sep, cost, model, factors)
-        estimates = estimateCum(data, knowns)
-        its += 1
-        if its > 25:
-            break
-
-
-    print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
-    cor = pearsonr(data.SIM_Estimates, data.Data)[0]
-    return data, cor
-
-
-def unConstrain(observed, data, knowns, params, trips, sep, cost, factors, constraints):
-    model = 'unConstrained'
-    print 'Unconstrained model chosen'
-    data = estimateFlows(data, sep, cost, model, factors)
-    estimates = estimateCum(data, knowns)
-    its = 0
-
-    while abs(estimates - observed) > .1:
-        paramSingle = []
-        for param in params:
-            if param != 'beta':
-                paramSingle.append(data[str(param) + 'Param'].ix[0])
-            else:
-                paramSingle.append(data[param].ix[0])
-
-        functions = buildLLFunctions(data, params, factors, trips, sep, cost, model, paramSingle)
-        updates = new(paramSingle, data, params, sep, trips, functions)
-        print updates, abs(estimates - observed)
-
-        data = estimateFlows(data, sep, cost, model, factors)
-        estimates = estimateCum(data, knowns)
-        its += 1
-        if its > 25:
-            break
-
+    variance = peStats(updates[0], data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
     return data, cor

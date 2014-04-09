@@ -117,18 +117,15 @@ class calibrate:
             entropy.checkParams(self.factors, self.initialParams)
 
         if (self.prodCon == True) & (self.attCon == True):
-            self.results, cor = entropy.dConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
-
+            self.model = 'dConstrained'
         elif (self.prodCon == True) & (self.attCon == False):
-            self.results, cor = entropy.prodConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
-
+            self.model = 'prodConstrained'
         elif (self.prodCon == False) & (self.attCon == True):
-            self.results, cor = entropy.attConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
-
+            self.model = 'attConstrained'
         elif (self.prodCon == False) & (self.attCon == False):
-            self.results, cor = entropy.unConstrain(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints)
+            self.model = 'unConstrained'
 
-
+        self.results, cor = entropy.run(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints, self.model)
         self.results.rsquared = cor**2
 
         return self
