@@ -57,22 +57,84 @@ def regression(data, trips, cost, sep, factors, constraints):
 
 #Calculate descriptive statistics
 def sysDesc(data, trips, sep):
-    numObserved = len(data)
-    avgDist = np.sum(data[trips])/numObserved
-    avgDistTrav = np.sum(data[trips]*data[sep])/np.sum(data[trips])
+    origins = len(data['Origin'].unique())
+    destinations = len(data['Destination'].unique())
+    pairs = origins*destinations
+    obsInt = np.sum(data[trips])
+    predInt = np.sum(data['SIM_Estimates'])
+    avgDist = np.sum(data[sep])/pairs
+    avgDistTrav = (np.sum(data[trips]*data[sep]))/np.sum(data[trips])
+    obsMeanTripLen = (np.sum(data[trips]*data[sep]))/obsInt
+    predMeanTripLen = (np.sum(data['SIM_Estimates']*data[sep]))/predInt
     #Skipped asymetry index
+    #three likelihood statistics
+    percentDev = ((np.sum(abs(data[trips]-data['SIM_Estimates'])))/np.sum(data[trips]))*100
+    intMean = np.sum(data[trips]/pairs)
+    percentDevMean = ((np.sum(abs(data[trips]-intMean)))/np.sum(data[trips]))*100
+    percentDevRed = ((percentDevMean-percentDev)/percentDev)*100
+    pij = data[trips]/np.sum(data[trips])
+    phatij = data['SIM_Estimates']/np.sum(data[trips])
+    infoGain = np.sum(pij*np.log((pij/phatij)))
+    sij = (pij+phatij)/2
+    psiStat = np.sum(pij*np.log(pij/sij)) + np.sum(phatij*np.log(phatij/sij))
+    #why is MDI only calculated once? skipped
+    srmse = ((np.sum((data[trips]-data['SIM_Estimates'])**2)/pairs)**.5)/(np.sum(data[trips])/pairs)
+    maxEntropy = round(np.log(pairs), 4)
+    print maxEntropy
+    predEntropy = round(-np.sum(phatij*np.log(phatij)), 4)
+    print predEntropy
+    obsEntropy = round(-np.sum(pij*np.log(pij)), 4)
+    print obsEntropy
+    diffPredEnt = round(maxEntropy - predEntropy, 4)
+    print diffPredEnt
+    diffObsEnt = round(maxEntropy - obsEntropy, 4)
+    print diffObsEnt
+    diffEntropy = round(predEntropy - obsEntropy, 4)
+    print diffEntropy
+    entropyRS = round(diffPredEnt/diffObsEnt, 4)
+    print entropyRS
+    varPredEnt = round(((np.sum(phatij*np.log(phatij)**2)-predEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
+    print varPredEnt
+    varObsEnt = round(((np.sum(pij*np.log(pij)**2)-obsEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
+    print varObsEnt
+    tStatEnt = round((predEntropy-obsEntropy)/((varPredEnt+varObsEnt)**.5), 4)
+    print tStatEnt
+    return origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt
 
 #Calculate parameter estimate statistics
 def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates):
-    firstD = buildLLFunctions([PV], data, params, factors, trips, sep, cost, model, constraints, knowns)
-    recalc = buildLLFunctions([PV+.001], data, params, factors, trips, sep, cost, model, constraints, knowns)
-    #print firstD, recalc
-    diff = firstD[0]-recalc[0]
-    #print diff
-    secondD = -(1/(diff/.001))
-    #print secondD
-    print math.sqrt(secondD)
-    data[params[0]] = PV
+    if len(PV) == 1:
+        firstD = buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constraints, knowns)
+        recalc = buildLLFunctions(PV+.001, data, params, factors, trips, sep, cost, model, constraints, knowns)
+        diff = firstD[0]-recalc[0]
+        secondD = -(1/(diff/.001))
+        data[params[0]] = PV[0]
+        print math.sqrt(secondD)
+    elif len(PV) > 1:
+        counter = 0
+        varMatrix = np.zeros((len(PV),len(PV)))
+
+        for x, param in enumerate(PV):
+            varParams = list(PV)
+            varParams[x] = varParams[x]+.1
+
+            varMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=True)
+
+
+
+
+
+
+
+        return np.sqrt(np.linalg.inv(np.transpose(varMatrix)).diagonal())
+
+
+
+
+
+
+
+
 
 
 
@@ -290,15 +352,16 @@ def estimateCum(data, knowns):
     return np.sum(data["SIM_Estimates"]*np.log(knowns))
 
 
-def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constraints, knowns):
+def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=False):
     for x, param in enumerate(params):
         if param != 'beta':
             data[str(param) + 'Param'] = PV[x]
         else:
             data[param] = PV[x]
-    data = balanceFactors(data, sep, cost, factors, constraints, model)
-    data = estimateFlows(data, sep, cost, model, factors)
-    estimates = estimateCum(data, knowns)
+    if peM == False:
+        data = balanceFactors(data, sep, cost, factors, constraints, model)
+        data = estimateFlows(data, sep, cost, model, factors)
+        estimates = estimateCum(data, knowns)
 
     def buildFunction(common, data, trips, param, factors, beta=False):
 
@@ -308,15 +371,15 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
                     last = len(factors)
                     for count, factor in enumerate(factors[key]):
                         if count+1 != last:
-                            f += 'data["'+ str(factor) + '"]**x[' + str(count+1) + ']*'
+                            f += 'data["'+ str(factor) + '"]**PV[' + str(count+1) + ']*'
                         else:
-                            f = data[str(factor) ]**PV[1]
+                            f = 'data["'+ str(factor) + '"]**PV[' + str(count+1) + ']'
 
         if factors != None:
 
 
             if cost == 'negexp':
-                decay = np.exp(data[sep]*x[0])
+                decay = np.exp(data[sep]*PV[0])
             elif cost == 'invpow':
                 decay = (data[sep]**PV[0])
             else:
@@ -325,16 +388,16 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
 
             if beta == True:
                 if cost == 'negexp':
-                    return np.sum(common*f*decay*np.log(np.exp(data[param]))) - np.sum(data[trips]*np.log(np.exp(data[param])))
+                    return np.sum(common*eval(f)*decay*np.log(np.exp(data[param]))) - np.sum(data[trips]*np.log(np.exp(data[param])))
                 else:
-                    return np.sum(common*f*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
+                    return np.sum(common*eval(f)*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
             else:
-                return np.sum(common*f*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
+                return np.sum(common*eval(f)*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
 
         else:
 
             if cost == 'negexp':
-                decay = np.exp(data[sep]*x)
+                decay = np.exp(data[sep]*PV[0])
             elif cost == 'invpow':
                 decay = (data[sep]**PV[0])
             else:
@@ -421,9 +484,73 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
         its += 1
         if its > 25:
             break
-    variance = peStats(updates[0], data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
+
+    for x, each in enumerate(params):
+        updates[x] = round(updates[x], 7)
+    variance = peStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
+    origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt = sysDesc(data, trips, sep)
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
+    print ''
+    print 'Model type: ', model
+    print 'With ' + str(origins) + ' origins and ' + str(destinations) + ' destinations.'
+    print ''
+    print 'The observed mean trip length: ', obsMeanTripLen
+    print 'The predicted mean trip length: ', predMeanTripLen
+    print ''
+    for x,param in enumerate(params):
+        print 'Maximum Likelihood ' + param + ' parameter: ', updates[x]
+        print ''
+    print 'After ', its, 'iterations of the calibration routine with a cost/distance function of: ', cost
+    print ''
+    print 'The number of origin-destination pairs considered = ', pairs
+    print ''
+    print 'The total interactions observed: ', obsInt
+    print 'The total interactions predicted: ', predInt
+    print ''
+    print 'The Asymmetry Index for this interaction data: Still needs to be computed'
+    print ''
+    print 'Regressing the observed interactions on the predicted interactions yields and r-squared value of: ', cor*cor
+    print ''
+    print 'T statistic for regression: still needs to be computed'
+    print ''
+    print 'Percentage deviation of observed interaction from the mean: ', percentDevMean
+    print ''
+    print 'Percentage deviation of observed interaction from the observed interaction: ', percentDev
+    print ''
+    print 'Percentage reduction in deviation: ', percentDevRed
+    print ''
+    print 'Ayeni S Information Statistic (psi) = ', psiStat
+    print ''
+    print 'Minimum Discriminant Information Statistic: still needs to be computed'
+    print ''
+    print 'The standardied root mean square error statistic: ', srmse
+    print ''
+    print 'The maximum entropy for ', pairs, ' cases: ', maxEntropy
+    print 'The entropy of the predicted interactions: ', predEntropy
+    print 'The entropy of the observed interactions: ', obsEntropy
+    print ''
+    print 'Maximum entropy - entropy of predicted interactions: ', diffPredEnt
+    print ''
+    print 'Entropy of predicted interactions - entropy of observed interactions: ', diffEntropy
+    print ''
+    print 'Entropy ratio statistic: ', entropyRS
+    print ''
+    print 'Variance of the entropy of predicted interactions: ', varPredEnt
+    print ''
+    print 'Variance of the entropy of observed interactions: ', varObsEnt
+    print ''
+    print 'T statistic for the absolute entropy difference: ', tStatEnt
+    print ''
+    print 'Information gain statistic: ', infoGain
+    print ''
+    print 'Average distance traveled in system: ', avgDistTrav
+    print 'Average origin-destination separation: ', avgDist
+    print ''
+    for x, param, in enumerate(params):
+        print 'Standard error of the ', param, ' parameter: ', variance[x]
+        print ''
+    print
     return data, cor
 
 
