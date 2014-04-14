@@ -66,7 +66,14 @@ def sysDesc(data, trips, sep):
     avgDistTrav = (np.sum(data[trips]*data[sep]))/np.sum(data[trips])
     obsMeanTripLen = (np.sum(data[trips]*data[sep]))/obsInt
     predMeanTripLen = (np.sum(data['SIM_Estimates']*data[sep]))/predInt
-    #Skipped asymetry index
+    aSymSum = 0
+    for o in data['Origin'].unique():
+        for d in data['Destination'].unique():
+            if o != d:
+                aSymSum += abs((data[trips][(data['Origin'] == o) & (data['Destination'] == d)].values) - (data[trips][(data['Origin'] == d) & (data['Destination'] == o)].values))
+    if origins == destinations:
+        aSymInd = 50.0000*aSymSum[0]/(np.sum(data[trips]))
+    else: aSymInd = 'N/A'
     #three likelihood statistics
     percentDev = ((np.sum(abs(data[trips]-data['SIM_Estimates'])))/np.sum(data[trips]))*100
     intMean = np.sum(data[trips]/pairs)
@@ -80,26 +87,16 @@ def sysDesc(data, trips, sep):
     #why is MDI only calculated once? skipped
     srmse = ((np.sum((data[trips]-data['SIM_Estimates'])**2)/pairs)**.5)/(np.sum(data[trips])/pairs)
     maxEntropy = round(np.log(pairs), 4)
-    print maxEntropy
     predEntropy = round(-np.sum(phatij*np.log(phatij)), 4)
-    print predEntropy
     obsEntropy = round(-np.sum(pij*np.log(pij)), 4)
-    print obsEntropy
     diffPredEnt = round(maxEntropy - predEntropy, 4)
-    print diffPredEnt
     diffObsEnt = round(maxEntropy - obsEntropy, 4)
-    print diffObsEnt
     diffEntropy = round(predEntropy - obsEntropy, 4)
-    print diffEntropy
     entropyRS = round(diffPredEnt/diffObsEnt, 4)
-    print entropyRS
     varPredEnt = round(((np.sum(phatij*np.log(phatij)**2)-predEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
-    print varPredEnt
     varObsEnt = round(((np.sum(pij*np.log(pij)**2)-obsEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
-    print varObsEnt
     tStatEnt = round((predEntropy-obsEntropy)/((varPredEnt+varObsEnt)**.5), 4)
-    print tStatEnt
-    return origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt
+    return origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt
 
 #Calculate parameter estimate statistics
 def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates):
@@ -109,7 +106,7 @@ def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, kno
         diff = firstD[0]-recalc[0]
         secondD = -(1/(diff/.001))
         data[params[0]] = PV[0]
-        print math.sqrt(secondD)
+        return [math.sqrt(secondD)]
     elif len(PV) > 1:
         counter = 0
         varMatrix = np.zeros((len(PV),len(PV)))
@@ -461,11 +458,12 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
 
 
 def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, model):
-    print 'Model selected: ' + model
+    #print 'Model selected: ' + model
     data = balanceFactors(data, sep, cost, factors, constraints, model)
     data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
     its = 0
+
 
     while abs(estimates - observed) > .001:
         paramSingle = []
@@ -476,7 +474,7 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
                 paramSingle.append(data[param].ix[0])
 
         updates = fsolve(buildLLFunctions, paramSingle, (data, params, factors, trips, sep, cost, model, constraints, knowns))
-        print updates, abs(estimates - observed)
+        #print updates, abs(estimates - observed)
 
         data = balanceFactors(data, sep, cost, factors, constraints, model)
         data = estimateFlows(data, sep, cost, model, factors)
@@ -488,70 +486,70 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
     for x, each in enumerate(params):
         updates[x] = round(updates[x], 7)
     variance = peStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
-    origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt = sysDesc(data, trips, sep)
+    origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt = sysDesc(data, trips, sep)
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
-    print ''
-    print 'Model type: ', model
-    print 'With ' + str(origins) + ' origins and ' + str(destinations) + ' destinations.'
-    print ''
-    print 'The observed mean trip length: ', obsMeanTripLen
-    print 'The predicted mean trip length: ', predMeanTripLen
-    print ''
+    sumStr = ''
+    sumStr += '\n'
+    sumStr += '\nModel type: ' + str(model)
+    sumStr += '\nWith ' + str(origins) + ' origins and ' + str(destinations) + ' destinations.'
+    sumStr += '\n'
+    sumStr += '\nThe observed mean trip length: ' +  str(obsMeanTripLen)
+    sumStr += '\nThe predicted mean trip length: ' + str(predMeanTripLen)
+    sumStr += '\n'
     for x,param in enumerate(params):
-        print 'Maximum Likelihood ' + param + ' parameter: ', updates[x]
-        print ''
-    print 'After ', its, 'iterations of the calibration routine with a cost/distance function of: ', cost
-    print ''
-    print 'The number of origin-destination pairs considered = ', pairs
-    print ''
-    print 'The total interactions observed: ', obsInt
-    print 'The total interactions predicted: ', predInt
-    print ''
-    print 'The Asymmetry Index for this interaction data: Still needs to be computed'
-    print ''
-    print 'Regressing the observed interactions on the predicted interactions yields and r-squared value of: ', cor*cor
-    print ''
-    print 'T statistic for regression: still needs to be computed'
-    print ''
-    print 'Percentage deviation of observed interaction from the mean: ', percentDevMean
-    print ''
-    print 'Percentage deviation of observed interaction from the observed interaction: ', percentDev
-    print ''
-    print 'Percentage reduction in deviation: ', percentDevRed
-    print ''
-    print 'Ayeni S Information Statistic (psi) = ', psiStat
-    print ''
-    print 'Minimum Discriminant Information Statistic: still needs to be computed'
-    print ''
-    print 'The standardied root mean square error statistic: ', srmse
-    print ''
-    print 'The maximum entropy for ', pairs, ' cases: ', maxEntropy
-    print 'The entropy of the predicted interactions: ', predEntropy
-    print 'The entropy of the observed interactions: ', obsEntropy
-    print ''
-    print 'Maximum entropy - entropy of predicted interactions: ', diffPredEnt
-    print ''
-    print 'Entropy of predicted interactions - entropy of observed interactions: ', diffEntropy
-    print ''
-    print 'Entropy ratio statistic: ', entropyRS
-    print ''
-    print 'Variance of the entropy of predicted interactions: ', varPredEnt
-    print ''
-    print 'Variance of the entropy of observed interactions: ', varObsEnt
-    print ''
-    print 'T statistic for the absolute entropy difference: ', tStatEnt
-    print ''
-    print 'Information gain statistic: ', infoGain
-    print ''
-    print 'Average distance traveled in system: ', avgDistTrav
-    print 'Average origin-destination separation: ', avgDist
-    print ''
+        sumStr += '\nMaximum Likelihood ' + param + ' parameter: ' + str(updates[x])
+        sumStr += '\n'
+    sumStr += '\nAfter ' + str(its) + 'iterations of the calibration routine with a cost/distance function of: ' +  str(cost)
+    sumStr += '\n'
+    sumStr += '\nThe number of origin-destination pairs considered = ' + str(pairs)
+    sumStr += '\n'
+    sumStr += '\nThe total interactions observed: ' + str(obsInt)
+    sumStr += '\nThe total interactions predicted: ' + str(predInt)
+    sumStr += '\n'
+    sumStr += '\nThe Asymmetry Index for this interaction data: ' + str(aSymInd)
+    sumStr += '\n'
+    sumStr += '\nRegressing the observed interactions on the predicted interactions yields and r-squared value of: ' + str(cor*cor)
+    sumStr += '\n'
+    sumStr += '\nT statistic for regression: still needs to be computed'
+    sumStr += '\n'
+    sumStr += '\nPercentage deviation of observed interaction from the mean: ' + str(percentDevMean)
+    sumStr += '\n'
+    sumStr += '\nPercentage deviation of observed interaction from the observed interaction: ' + str(percentDev)
+    sumStr += '\n'
+    sumStr += '\nPercentage reduction in deviation: ' + str(percentDevRed)
+    sumStr += '\n'
+    sumStr += '\nAyeni S Information Statistic (psi) = ' + str(psiStat)
+    sumStr += '\n'
+    sumStr += '\nMinimum Discriminant Information Statistic: still needs to be computed'
+    sumStr += '\n'
+    sumStr += '\nThe standardied root mean square error statistic: ' + str(srmse)
+    sumStr += '\n'
+    sumStr += '\nThe maximum entropy for ' + str(pairs) + ' cases: ' + str(maxEntropy)
+    sumStr += '\nThe entropy of the predicted interactions: ' + str(predEntropy)
+    sumStr += '\nThe entropy of the observed interactions: ' + str(obsEntropy)
+    sumStr += '\n'
+    sumStr += '\nMaximum entropy - entropy of predicted interactions: ' + str(diffPredEnt)
+    sumStr += '\n'
+    sumStr += '\nEntropy of predicted interactions - entropy of observed interactions: ' + str(diffEntropy)
+    sumStr += '\n'
+    sumStr += '\nEntropy ratio statistic: ' + str(entropyRS)
+    sumStr += '\n'
+    sumStr += '\nVariance of the entropy of predicted interactions: ' + str(varPredEnt)
+    sumStr += '\n'
+    sumStr += '\nVariance of the entropy of observed interactions: ' + str(varObsEnt)
+    sumStr += '\n'
+    sumStr += '\nT statistic for the absolute entropy difference: ' + str(tStatEnt)
+    sumStr += '\n'
+    sumStr += '\nInformation gain statistic: ' + str(infoGain)
+    sumStr += '\n'
+    sumStr += '\nAverage distance traveled in system: ' + str(avgDistTrav)
+    sumStr += '\nAverage origin-destination separation: ' + str(avgDist)
+    sumStr += '\n'
     for x, param, in enumerate(params):
-        print 'Standard error of the ', param, ' parameter: ', variance[x]
-        print ''
-    print
-    return data, cor
+        sumStr += '\nStandard error of the ' + str(param) + ' parameter: ' + str(variance[x])
+        sumStr += '\n'
+    return data, cor, sumStr
 
 
 

@@ -125,8 +125,9 @@ class calibrate:
         elif (self.prodCon == False) & (self.attCon == False):
             self.model = 'unConstrained'
 
-        self.results, cor = entropy.run(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints, self.model)
+        self.results, cor, sumStr = entropy.run(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints, self.model)
         self.results.rsquared = cor**2
+        self.result.sumStr = sumStr
 
         return self
 
