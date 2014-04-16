@@ -11,8 +11,10 @@ import sys
 
 class calibrate:
 
-    def checkCols(self, data, trips, sep, factors, constraints):
+    def checkCols(self, data, trips, sep, factors, constraints, totalFlows):
             userInput = [trips, sep]
+            if len(totalFlows) > 0:
+                userInput.append(totalFlows)
             if factors != None:
                 for key in factors.keys():
                     for factor in factors[key]:
@@ -30,24 +32,6 @@ class calibrate:
 
     def checkFactors(self, prodCon, attCon, factors):
 
-        if (prodCon == True) & (attCon == False):
-
-            try:
-                if len(factors['destinations']) < 1:
-                    sys.exit('In an prodcution-constrained model there must be at least one destination attractiveness variable ("destinations" key in factors dict)')
-            except TypeError:
-                sys.exit('In an prodcution-constrained model there must be at least one destination attractiveness variable ("destinations" key in factors dict)')
-            except KeyError:
-                sys.exit('In an prodcution-constrained model there must be at least one destination attractiveness variable ("destinations" key in factors dict)')
-        if (prodCon == False) & (attCon == True):
-
-            try:
-                 if len(factors['origins']) < 1:
-                    sys.exit('In an attraction-constrained model there must be at least one origin propulsiveness variable ("origins" key in factors dict)')
-            except TypeError:
-                sys.exit('In an attraction-constrained model there must be at least one origin propulsiveness variable ("origins" key in factors dict)')
-            except KeyError:
-                sys.exit('In an attraction-constrained model there must be at least one origin propulsiveness variable ("origins" key in factors dict)')
 
         if (prodCon == False) & (attCon == False):
 
@@ -61,7 +45,7 @@ class calibrate:
 
     #def checkLen(self.trips, self.sep, self.factors, self):
 
-    def __init__(self, data, trips, sep, dataForm='adj', diagFilter = True, cost='negexp', factors=None, constraints={}):
+    def __init__(self, data, trips, sep, dataForm='adj', diagFilter = True, cost='exp', factors=None, constraints={}, totalFlows=''):
         self.data = data
         self.cost = cost
         self.dataForm = dataForm
@@ -69,10 +53,12 @@ class calibrate:
         self.factors = factors
         self.trips = trips
         self.sep = sep
+        self.totalFlows = totalFlows
 
 
 
-        self.checkCols(self.data, self.trips, self.sep, self.factors, self.constraints)
+
+        self.checkCols(self.data, self.trips, self.sep, self.factors, self.constraints, self.totalFlows)
 
         if diagFilter == True:
             if self.dataForm == 'adj':
@@ -107,11 +93,9 @@ class calibrate:
         self.method = 'mle'
         self.initialParams = initialParams
 
-        if self.factors != None:
-            entropy.checkParams(self.factors, self.initialParams)
 
 
-        observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.prodCon, self.attCon, self.initialParams)
+        observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.prodCon, self.attCon, self.initialParams, self.totalFlows)
 
         if self.factors != None:
             entropy.checkParams(self.factors, self.initialParams)
@@ -127,7 +111,8 @@ class calibrate:
 
         self.results, cor, sumStr = entropy.run(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints, self.model)
         self.results.rsquared = cor**2
-        self.result.sumStr = sumStr
+        self.results.sumStr = sumStr
+
 
         return self
 

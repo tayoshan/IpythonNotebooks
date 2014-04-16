@@ -41,7 +41,7 @@ def regression(data, trips, cost, sep, factors, constraints):
     if first != True:
         regstr = regstr + '+'
 
-    if cost == 'invpow':
+    if cost == 'pow':
         regstr = regstr + 'np.log(' + str(data[sep].name) + ')'
     else:
         regstr = regstr + str(data[sep].name)
@@ -59,12 +59,12 @@ def regression(data, trips, cost, sep, factors, constraints):
 def sysDesc(data, trips, sep):
     origins = len(data['Origin'].unique())
     destinations = len(data['Destination'].unique())
-    pairs = origins*destinations
+    pairs = len(data)
     obsInt = np.sum(data[trips])
     predInt = np.sum(data['SIM_Estimates'])
-    avgDist = np.sum(data[sep])/pairs
-    avgDistTrav = (np.sum(data[trips]*data[sep]))/np.sum(data[trips])
-    obsMeanTripLen = (np.sum(data[trips]*data[sep]))/obsInt
+    avgDist = round(np.sum(data[sep])*1.00000/pairs)
+    avgDistTrav = round((np.sum(data[trips]*data[sep]))*1.00000/np.sum(data[trips])*1.00000)
+    obsMeanTripLen = (np.sum(data[trips]*data[sep]))*1.00000/obsInt*1.000000
     predMeanTripLen = (np.sum(data['SIM_Estimates']*data[sep]))/predInt
     aSymSum = 0
     for o in data['Origin'].unique():
@@ -75,10 +75,10 @@ def sysDesc(data, trips, sep):
         aSymInd = 50.0000*aSymSum[0]/(np.sum(data[trips]))
     else: aSymInd = 'N/A'
     #three likelihood statistics
-    percentDev = ((np.sum(abs(data[trips]-data['SIM_Estimates'])))/np.sum(data[trips]))*100
-    intMean = np.sum(data[trips]/pairs)
-    percentDevMean = ((np.sum(abs(data[trips]-intMean)))/np.sum(data[trips]))*100
-    percentDevRed = ((percentDevMean-percentDev)/percentDev)*100
+    percentDev = round(((np.sum(abs(data[trips]-data['SIM_Estimates'])))/np.sum(data[trips]))*100, 3)
+    intMean = round(np.sum(data[trips]/pairs), 1)
+    percentDevMean = round(((np.sum(abs(data[trips]-intMean)))/np.sum(data[trips]))*100, 3)
+    percentDevRed = (abs((percentDev-percentDevMean))/percentDevMean)*100
     pij = data[trips]/np.sum(data[trips])
     phatij = data['SIM_Estimates']/np.sum(data[trips])
     infoGain = np.sum(pij*np.log((pij/phatij)))
@@ -93,7 +93,7 @@ def sysDesc(data, trips, sep):
     diffObsEnt = round(maxEntropy - obsEntropy, 4)
     diffEntropy = round(predEntropy - obsEntropy, 4)
     entropyRS = round(diffPredEnt/diffObsEnt, 4)
-    varPredEnt = round(((np.sum(phatij*np.log(phatij)**2)-predEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
+    varPredEnt = round(((np.sum(phatij*(np.log(phatij)**2))-predEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
     varObsEnt = round(((np.sum(pij*np.log(pij)**2)-obsEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
     tStatEnt = round((predEntropy-obsEntropy)/((varPredEnt+varObsEnt)**.5), 4)
     return origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt
@@ -113,9 +113,9 @@ def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, kno
 
         for x, param in enumerate(PV):
             varParams = list(PV)
-            varParams[x] = varParams[x]+.1
+            varParams[x] = varParams[x] + .1
 
-            varMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=True)
+            varMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns)
 
 
 
@@ -150,7 +150,7 @@ def checkParams(factors, initParams):
         sys.exit('The initial paramter keys and the factor names must be symmetrical (excluding beta)')
 
 #Set up balancing factors, total in/out flows, and parameters
-def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initialParams):
+def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initialParams, totalFlows):
 
     #For doubly constrained model
     if (prodCon == True) & (attCon == True):
@@ -176,6 +176,9 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
         #Calc total outflows
         Oi = data.groupby(data[constraints['production']]).aggregate({trips: np.sum})
         data["Oi"] = Oi.ix[pd.match(data[constraints['production']], Oi.index)].reset_index()[trips]
+        if factors == None:
+            Dj = data.groupby(data[totalFlows]).aggregate({trips: np.sum})
+            data["Dj"] = Dj.ix[pd.match(data[totalFlows], Dj.index)].reset_index()[trips]
 
     #For Attraction Constrained model
     if (prodCon == False) & (attCon == True):
@@ -183,6 +186,9 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
         #Calc total inflows
         Dj = data.groupby(data[constraints['attraction']]).aggregate({trips: np.sum})
         data["Dj"] = Dj.ix[pd.match(data[constraints['attraction']], Dj.index)].reset_index()[trips]
+        if factors == None:
+            Oi = data.groupby(data[totalFlows]).aggregate({trips: np.sum})
+            data["Oi"] = Oi.ix[pd.match(data[totalFlows], Oi.index)].reset_index()[trips]
 
     #For Unconstrained Model
     if (prodCon == False) & (attCon == False):
@@ -195,19 +201,19 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
     params = ['beta']
 
     #This is the observed data for which we want to derive parameters
-    if cost == 'negexp':
-        knowns = np.exp(data[sep])
-    elif cost == 'invpow':
+    if cost == 'exp':
         knowns = data[sep]
+    elif cost == 'pow':
+        knowns = np.log(data[sep])
     else:
-        sys.exit(sys.exit("The distance/cost function must be either 'invpow' or 'negexp'."))
+        sys.exit(sys.exit("The distance/cost function must be either 'pow' or 'exp'."))
 
     #If there are additional factors we will include that observed data, add it to param list, and add a data vector for the param
     if factors != None:
         if attCon != False:
             for factor in factors['origins']:
                 #Include that information in the model
-                knowns = knowns*data[factor]
+                knowns = knowns+np.log(data[factor])
                 #Add to params list
                 params.append(str(factor))
                 #variable param vector
@@ -215,14 +221,15 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
         if prodCon != False:
             for factor in factors['destinations']:
                 #Include that informatio in the model
-                knowns = knowns*data[factor]
+                knowns = knowns+np.log(data[factor])
                 #Add to params list
                 params.append(str(factor))
                 #variable param vector
                 data[str(factor) + 'Param'] = initialParams[factor]
 
     #Observed information is sum of trips multiplied by the log of known information
-    observed = np.sum(data[trips]*np.log(knowns))
+    observed = np.sum(data[trips]*knowns)
+
 
     #return observed info, data, knownn info, and params list
     return observed, data, knowns, params
@@ -231,19 +238,23 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
 
 #Function to calculate Ai values
 def calcAi(data, sep, cost, factors, model):
-    if cost == 'negexp':
+    if cost == 'exp':
         Ai = np.exp(data[sep]*data["beta"])
-    elif cost == 'invpow':
+    elif cost == 'pow':
         Ai = (data[sep]**data["beta"])
     else:
-        sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
-
-    if model == 'dConstrained':
-        Ai = Ai*data["Bj"]*data["Dj"]
+        sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
 
     if factors != None:
         for factor in factors['destinations']:
             Ai = Ai*(data[factor]**data[factor + 'Param'])
+
+    else:
+        Ai = Ai*data['Dj']
+
+    if model == 'dConstrained':
+        Ai = Ai*data["Bj"]
+
 
     data["Ai"] = Ai
 
@@ -251,20 +262,24 @@ def calcAi(data, sep, cost, factors, model):
 
 #Function to Calculate Bj values
 def calcBj(data, sep, cost, factors, model):
-    if cost == 'negexp':
+    if cost == 'exp':
         Bj = np.exp(data[sep]*data["beta"])
-    elif cost == 'invpow':
+    elif cost == 'pow':
         Bj = (data[sep]**data["beta"])
     else:
-        sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
-
-
-    if model == 'dConstrained':
-        Bj = Bj*data["Ai"]*data["Oi"]
+        sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
 
     if factors != None:
         for factor in factors['origins']:
             Bj = Bj*(data[factor]**data[factor + 'Param'])
+
+    else:
+        Bj = Bj*data['Oi']
+
+    if model == 'dConstrained':
+        Bj = Bj*data["Ai"]
+
+
 
     data["Bj"] = Bj
 
@@ -274,7 +289,7 @@ def calcBj(data, sep, cost, factors, model):
 def balanceFactors(data, sep, cost, factors, constraints, model):
     its = 0
     cnvg = 1
-    while cnvg > .01:
+    while cnvg > .0001:
         its = its + 1
         if model != 'attConstrained':
             calcAi(data, sep, cost, factors, model)
@@ -310,12 +325,12 @@ def balanceFactors(data, sep, cost, factors, constraints, model):
 #Step 5: Function to Calculate Tij' (flow estimates)
 def estimateFlows(data, sep, cost, model, factors):
 
-    if cost == 'negexp':
+    if cost == 'exp':
         decay = np.exp(data[sep]*data['beta'])
-    elif cost == 'invpow':
+    elif cost == 'pow':
         decay = (data[sep]**data['beta'])
     else:
-        sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
+        sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
 
 
     if model == 'dConstrained':
@@ -325,16 +340,24 @@ def estimateFlows(data, sep, cost, model, factors):
             for key in factors.keys():
                 for factor in factors[key]:
                     data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
+
     elif model == 'prodConstrained':
         data["SIM_Estimates"] = data["Oi"]*data["Ai"]*decay
         if factors != None:
             for factor in factors['destinations']:
                 data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
+        else:
+            data["SIM_Estimates"] = data["SIM_Estimates"]*data['Dj']
+
     elif model == 'attConstrained':
         data["SIM_Estimates"] = data["Dj"]*data["Bj"]*decay
         if factors != None:
             for factor in factors['origins']:
                 data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
+        else:
+            data["SIM_Estimates"] = data["SIM_Estimates"]*data['Oi']
+
+
     elif model == 'unConstrained':
         data["SIM_Estimates"] = decay
         if factors != None:
@@ -346,7 +369,7 @@ def estimateFlows(data, sep, cost, model, factors):
 
 #Step 6: Function to Calculate Sum of all products of Tij' and log distances
 def estimateCum(data, knowns):
-    return np.sum(data["SIM_Estimates"]*np.log(knowns))
+    return np.sum(data["SIM_Estimates"]*knowns)
 
 
 def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=False):
@@ -355,10 +378,11 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
             data[str(param) + 'Param'] = PV[x]
         else:
             data[param] = PV[x]
+
     if peM == False:
         data = balanceFactors(data, sep, cost, factors, constraints, model)
-        data = estimateFlows(data, sep, cost, model, factors)
-        estimates = estimateCum(data, knowns)
+
+
 
     def buildFunction(common, data, trips, param, factors, beta=False):
 
@@ -375,17 +399,17 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
         if factors != None:
 
 
-            if cost == 'negexp':
+            if cost == 'exp':
                 decay = np.exp(data[sep]*PV[0])
-            elif cost == 'invpow':
+            elif cost == 'pow':
                 decay = (data[sep]**PV[0])
             else:
-                sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
+                sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
 
 
             if beta == True:
-                if cost == 'negexp':
-                    return np.sum(common*eval(f)*decay*np.log(np.exp(data[param]))) - np.sum(data[trips]*np.log(np.exp(data[param])))
+                if cost == 'exp':
+                    return np.sum(common*eval(f)*decay*data[param]) - np.sum(data[trips]*data[param])
                 else:
                     return np.sum(common*eval(f)*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
             else:
@@ -393,17 +417,17 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
 
         else:
 
-            if cost == 'negexp':
+            if cost == 'exp':
                 decay = np.exp(data[sep]*PV[0])
-            elif cost == 'invpow':
+            elif cost == 'pow':
                 decay = (data[sep]**PV[0])
             else:
-                sys.exit("The distance/cost function must be either 'invpow' or 'negexp'.")
+                sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
 
 
             if beta == True:
-                if cost == 'negexp':
-                    return np.sum(common*decay*np.log(np.exp(data[param]))) - np.sum(data[trips]*np.log(np.exp(data[param])))
+                if cost == 'exp':
+                    return np.sum(common*decay*data[param]) - np.sum(data[trips]*data[param])
                 else:
                     return np.sum(common*decay*np.log(data[param])) - np.sum(data[trips]*np.log(data[param]))
             else:
@@ -425,6 +449,8 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
 
     if model == 'prodConstrained':
         common = data['Ai']*data['Oi']
+        if factors == None:
+            common = common*data['Dj']
         func = buildFunction(common, data, trips, sep, factors, beta=True)
         functions.append(func)
         if factors != None:
@@ -435,6 +461,8 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
 
     if model == 'attConstrained':
         common = data['Bj']*data['Dj']
+        if factors == None:
+            common = common*data['Oi']
         func = buildFunction(common, data, trips, sep, factors, beta=True)
         functions.append(func)
         if factors != None:
@@ -465,7 +493,7 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
     its = 0
 
 
-    while abs(estimates - observed) > .001:
+    while abs(estimates - observed) > 1:
         paramSingle = []
         for param in params:
             if param != 'beta':
@@ -475,18 +503,35 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
 
         updates = fsolve(buildLLFunctions, paramSingle, (data, params, factors, trips, sep, cost, model, constraints, knowns))
         #print updates, abs(estimates - observed)
+        for x, each in enumerate(params):
+            updates[x] = round(updates[x], 7)
 
         data = balanceFactors(data, sep, cost, factors, constraints, model)
         data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
+
+
         its += 1
-        if its > 25:
+        if its > 100:
             break
 
+    if 'Ai' in data.columns.names:
+        Ai = data.Ai.values.copy()
+    if 'Bj' in data.columns.names:
+        Bj = data.Bj.values.copy()
+    ests = data.SIM_Estimates.values.copy()
     for x, each in enumerate(params):
         updates[x] = round(updates[x], 7)
+
     variance = peStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
     origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt = sysDesc(data, trips, sep)
+
+    if 'Ai' in data.columns.names:
+        data.Ai = Ai
+    if 'Bj' in data.columns.names:
+        data.Bj = Bj
+    data.SIM_Estimates = ests
+
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
     sumStr = ''
@@ -515,7 +560,7 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
     sumStr += '\n'
     sumStr += '\nPercentage deviation of observed interaction from the mean: ' + str(percentDevMean)
     sumStr += '\n'
-    sumStr += '\nPercentage deviation of observed interaction from the observed interaction: ' + str(percentDev)
+    sumStr += '\nPercentage deviation of predicted interaction from the observed interaction: ' + str(percentDev)
     sumStr += '\n'
     sumStr += '\nPercentage reduction in deviation: ' + str(percentDevRed)
     sumStr += '\n'
