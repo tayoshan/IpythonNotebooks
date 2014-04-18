@@ -1,0 +1,65 @@
+Program started at   : 2014-04-18 15:58:01
+
+Program terminated at: 2014-04-18 15:58:01
+
+
+
+Model type: prodConstrained
+With 1 origins and 24 destinations.
+
+The observed mean trip length: 736.528341973
+The predicted mean trip length: 734.409742048
+
+Maximum Likelihood beta parameter: -0.7365098
+
+Maximum Likelihood Pop parameter: 0.7818262
+
+After 1iterations of the calibration routine with a cost/distance function of: pow
+
+The number of origin-destination pairs considered = 24
+
+The total interactions observed: 242873
+The total interactions predicted: 242873.0
+
+The Asymmetry Index for this interaction data: N/A
+
+Regressing the observed interactions on the predicted interactions yields and r-squared value of: 0.60516003721
+
+T statistic for regression: still needs to be computed
+
+Percentage deviation of observed interaction from the mean: 57.965
+
+Percentage deviation of predicted interaction from the observed interaction: 42.189
+
+Percentage reduction in deviation: 27.216423704
+
+Ayeni S Information Statistic (psi) = 0.0617061961253
+
+Minimum Discriminant Information Statistic: 29973.5379431
+
+The standardied root mean square error statistic: 0.578732067181
+
+The maximum entropy for 24 cases: 3.1781
+The entropy of the predicted interactions: 3.0063
+The entropy of the observed interactions: 2.8736
+
+Maximum entropy - entropy of predicted interactions: 0.1718
+
+Entropy of predicted interactions - entropy of observed interactions: 0.1327
+
+Entropy ratio statistic: 0.5642
+
+Variance of the entropy of predicted interactions: 1.39664e-06
+
+Variance of the entropy of observed interactions: 2.55421e-06
+
+T statistic for the absolute entropy difference: 66.7614
+
+Information gain statistic: 0.132705733873
+
+Average distance traveled in system: 737.0
+Average origin-destination separation: 851.0
+
+Standard error of the beta parameter: 0.0164073935123
+
+Standard error of the Pop parameter: 0.00868925448794

@@ -1,0 +1,61 @@
+Program started at   : 2014-04-18 15:09:27
+
+Program terminated at: 2014-04-18 15:09:28
+
+
+
+Model type: dConstrained
+With 9 origins and 9 destinations.
+
+The observed mean trip length: 1250.95555216
+The predicted mean trip length: 1255.54733226
+
+Maximum Likelihood beta parameter: -0.9055833
+
+After 5iterations of the calibration routine with a cost/distance function of: pow
+
+The number of origin-destination pairs considered = 72
+
+The total interactions observed: 12314322
+The total interactions predicted: 12314322.0
+
+The Asymmetry Index for this interaction data: 15.6820814008
+
+Regressing the observed interactions on the predicted interactions yields and r-squared value of: 0.908390007684
+
+T statistic for regression: still needs to be computed
+
+Percentage deviation of observed interaction from the mean: 60.047
+
+Percentage deviation of predicted interaction from the observed interaction: 17.356
+
+Percentage reduction in deviation: 71.0959748197
+
+Ayeni S Information Statistic (psi) = 0.011524857403
+
+Minimum Discriminant Information Statistic: 283841.610128
+
+The standardied root mean square error statistic: 0.233706669497
+
+The maximum entropy for 72 cases: 4.2767
+The entropy of the predicted interactions: 4.0258
+The entropy of the observed interactions: 4.0024
+
+Maximum entropy - entropy of predicted interactions: 0.2509
+
+Entropy of predicted interactions - entropy of observed interactions: 0.0234
+
+Entropy ratio statistic: 0.9147
+
+Variance of the entropy of predicted interactions: 3.424e-08
+
+Variance of the entropy of observed interactions: 3.667e-08
+
+T statistic for the absolute entropy difference: 87.8743
+
+Information gain statistic: 0.0234270927096
+
+Average distance traveled in system: 1251.0
+Average origin-destination separation: 1414.0
+
+Standard error of the beta parameter: 0.000575268585787
