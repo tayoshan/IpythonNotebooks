@@ -97,13 +97,29 @@ def sysDesc(data, trips, sep):
     varPredEnt = round(((np.sum(phatij*(np.log(phatij)**2))-predEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
     varObsEnt = round(((np.sum(pij*np.log(pij)**2)-obsEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
     tStatEnt = round((predEntropy-obsEntropy)/((varPredEnt+varObsEnt)**.5), 4)
-    return origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, MDI, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt
+    bhat = ((np.sum(data.Data))*(np.sum(data.SIM_Estimates))/(pairs-(np.sum(data.Data*data.SIM_Estimates))))/((np.sum(data.SIM_Estimates)**2)/(pairs-(np.sum(data.SIM_Estimates**2))))
+    #print bhat
+    sebhat = (np.sum((data.Data-data.SIM_Estimates)**2)/(pairs-2))/(((np.sum(data.SIM_Estimates**2))-(np.sum(data.Data**2))/pairs)**.5)
+    #print sebhat
+    tbhat = (bhat - 1)/sebhat
+    #print tbhat
+
+    return origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, MDI, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt, tbhat
+
+'''
+def llStats(PV, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates, initialParams):
+    ll = np.sum((data.Data/np.sum(data.Data))*np.log((data.SIM_Estimates/np.sum(data.SIM_Estimates))))
+    print ll
+    for each in initialParams:
+        initialParams[each] = 0
+    varParams = list(initialParams.values())
+    print buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns)
+'''
 
 #Calculate parameter estimate statistics
 def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates):
     if len(PV) == 1:
         firstD = buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constraints, knowns)
-        print firstD
         recalc = buildLLFunctions(PV+.001, data, params, factors, trips, sep, cost, model, constraints, knowns)
         diff = firstD[0]-recalc[0]
         secondD = -(1/(diff/.001))
@@ -115,9 +131,9 @@ def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, kno
 
         for x, param in enumerate(PV):
             varParams = list(PV)
-            varParams[x] = varParams[x] + .1
+            varParams[x] = varParams[x] + .01
 
-            varMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns)
+            varMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=True)
 
 
 
@@ -154,6 +170,21 @@ def checkParams(factors, initParams):
 #Set up balancing factors, total in/out flows, and parameters
 def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initialParams, Oi, Dj, totalFlows):
 
+    #The following setup is for within all models
+
+    #There is always a beta parameter so set it to user's initial value and add to param list
+    data['beta'] = initialParams['beta']
+    params = ['beta']
+
+    #This is the observed data for which we want to derive parameters
+    if cost == 'exp':
+        knowns = data[sep]
+    elif cost == 'pow':
+        knowns = np.log(data[sep])
+    else:
+        sys.exit(sys.exit("The distance/cost function must be either 'pow' or 'exp'."))
+
+
     #For doubly constrained model
     if (prodCon == True) & (attCon == True):
 
@@ -166,18 +197,14 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
 
         #Calc total outflows and inflows
         if Oi:
-            print '1'
             data["Oi"] = data[Oi]
         else:
-            print '2'
             Oi = data.groupby(data[constraints['production']]).aggregate({trips: np.sum})
             data["Oi"] = Oi.ix[pd.match(data[constraints['production']], Oi.index)].reset_index()[trips]
 
         if Dj:
-            print '3'
             data["Dj"] = data[Dj]
         else:
-            print '4'
             Dj = data.groupby(data[constraints['attraction']]).aggregate({trips: np.sum})
             data["Dj"] = Dj.ix[pd.match(data[constraints['attraction']], Dj.index)].reset_index()[trips]
 
@@ -187,7 +214,7 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
 
         #Calc total outflows
         if factors == None:
-            print Dj
+            print 'a'
             if not Dj:
                 Dj = data.groupby(data[totalFlows]).aggregate({trips: np.sum})
                 data["Dj"] = Dj.ix[pd.match(data[totalFlows], Dj.index)].reset_index()[trips].sort_index()
@@ -196,9 +223,11 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
                 data["Dj"] = data[Dj]
 
         if not Oi:
+            print 'b'
             Oi = data.groupby(data[constraints['production']]).aggregate({trips: np.sum})
             data["Oi"] = Oi.ix[pd.match(data[constraints['production']], Oi.index)].reset_index()[trips]
         else:
+            print 'c'
             data['Oi'] = data[Oi]
 
 
@@ -207,40 +236,45 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
 
         #Calc total inflows
         if factors == None:
+            print 'd'
             if not Oi:
                 Oi = data.groupby(data[totalFlows]).aggregate({trips: np.sum})
                 data["Oi"] = Oi.ix[pd.match(data[totalFlows], Oi.index)].reset_index()[trips]
             else:
                 data["Oi"] = data[Oi]
         if not Dj:
+            print 'e'
             Dj = data.groupby(data[constraints['attraction']]).aggregate({trips: np.sum})
             data["Dj"] = Dj.ix[pd.match(data[constraints['attraction']], Dj.index)].reset_index()[trips]
         else:
+            print 'f'
             data["Dj"] = data[Dj]
 
 
     #For Unconstrained Model
     if (prodCon == False) & (attCon == False):
-        pass
+        print 'g'
+        for factor in factors['origins']:
+            #Include that information in the model
+            knowns = knowns+np.log(data[factor])
+            #Add to params list
+            params.append(str(factor))
+            #variable param vector
+            data[str(factor) + 'Param'] = initialParams[factor]
+        for factor in factors['destinations']:
+            #Include that informatio in the model
+            knowns = knowns+np.log(data[factor])
+            #Add to params list
+            params.append(str(factor))
+            #variable param vector
+            data[str(factor) + 'Param'] = initialParams[factor]
 
-    #The following setup is for within all models
 
-    #There is always a beta parameter so set it to user's initial value and add to param list
-    print initialParams
-    data['beta'] = initialParams['beta']
-    params = ['beta']
-
-    #This is the observed data for which we want to derive parameters
-    if cost == 'exp':
-        knowns = data[sep]
-    elif cost == 'pow':
-        knowns = np.log(data[sep])
-    else:
-        sys.exit(sys.exit("The distance/cost function must be either 'pow' or 'exp'."))
 
     #If there are additional factors we will include that observed data, add it to param list, and add a data vector for the param
     if factors != None:
         if attCon != False:
+            print 'h'
             for factor in factors['origins']:
                 #Include that information in the model
                 knowns = knowns+np.log(data[factor])
@@ -249,13 +283,13 @@ def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initial
                 #variable param vector
                 data[str(factor) + 'Param'] = initialParams[factor]
         if prodCon != False:
+            print 'i'
             for factor in factors['destinations']:
                 #Include that informatio in the model
                 knowns = knowns+np.log(data[factor])
                 #Add to params list
                 params.append(str(factor))
                 #variable param vector
-                print initialParams
                 data[str(factor) + 'Param'] = initialParams[factor]
 
     #Observed information is sum of trips multiplied by the log of known information
@@ -272,7 +306,7 @@ def calcAi(data, sep, cost, factors, model):
     if cost == 'exp':
         Ai = np.exp(data[sep]*data["beta"])
     elif cost == 'pow':
-        print data['beta'], type(data["beta"])
+
         Ai = (data[sep]**data["beta"])
     else:
         sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
@@ -411,22 +445,67 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
         else:
             data[param] = PV[x]
 
-    if peM == False:
+    if peM == False and model != 'unConstrained':
         data = balanceFactors(data, sep, cost, factors, constraints, model)
 
 
 
     def buildFunction(common, data, trips, param, factors, beta=False):
-
-        if factors != None:
+        if model == 'unConstrained':
+            first = True
+            count = 1
+            last = 0
+            for key in factors.keys():
+                last += len(factors[key])
             for key in factors.keys():
                 for factor in factors[key]:
-                    last = len(factors)
-                    for count, factor in enumerate(factors[key]):
-                        if count+1 != last:
-                            f += 'data["'+ str(factor) + '"]**PV[' + str(count+1) + ']*'
+                    print last
+                    if first == True and count == last:
+                        print '1'
+                        f = 'data["'+ str(factor) + '"]**PV[' + str(count) + ']'
+                        first = False
+                        count+=1
+                    elif first == True and count != last:
+                        print '2'
+                        f = 'data["'+ str(factor) + '"]**PV[' + str(count) + ']*'
+                        first = False
+                        count+=1
+                    elif first == False and count != last:
+                        print '3'
+                        f += 'data["'+ str(factor) + '"]**PV[' + str(count) + ']*'
+                        count+=1
+                    else:
+                        print '4'
+                        f += 'data["'+ str(factor) + '"]**PV[' + str(count) + ']'
+                        count+=1
+
+        else:
+            if factors != None:
+                first = True
+                count = 1
+                #print factors.keys()
+                for key in factors.keys():
+                    for factor in factors[key]:
+                        last = len(factors[key])
+                        #print last
+                        if first == True and count == last:
+                            #print '11'
+                            f = 'data["'+ str(factor) + '"]**PV[' + str(count) + ']'
+                            first = False
+                            count+=1
+                        elif first == True and count != last:
+                            #print '22'
+                            f = 'data["'+ str(factor) + '"]**PV[' + str(count) + ']*'
+                            first = False
+                            count+=1
+                        elif first == False and count != last:
+                            #print '33'
+                            f += 'data["'+ str(factor) + '"]**PV[' + str(count) + ']*'
+                            count+=1
                         else:
-                            f = 'data["'+ str(factor) + '"]**PV[' + str(count+1) + ']'
+                            #print '44'
+                            f += 'data["'+ str(factor) + '"]**PV[' + str(count) + ']'
+                            count+=1
 
         if factors != None:
 
@@ -517,9 +596,10 @@ def buildLLFunctions(PV, data, params, factors, trips, sep, cost, model, constra
     return functions
 
 
-def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, model):
+def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, model, initialParams):
     #print 'Model selected: ' + model
-    data = balanceFactors(data, sep, cost, factors, constraints, model)
+    if model != 'unConstrained':
+        data = balanceFactors(data, sep, cost, factors, constraints, model)
     data = estimateFlows(data, sep, cost, model, factors)
     estimates = estimateCum(data, knowns)
     its = 0
@@ -540,7 +620,8 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
         for x, each in enumerate(params):
             updates[x] = round(updates[x], 7)
 
-        data = balanceFactors(data, sep, cost, factors, constraints, model)
+        if model != 'unConstrained':
+            data = balanceFactors(data, sep, cost, factors, constraints, model)
         data = estimateFlows(data, sep, cost, model, factors)
         estimates = estimateCum(data, knowns)
 
@@ -557,14 +638,18 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
     for x, each in enumerate(params):
         updates[x] = round(updates[x], 7)
 
-    variance = peStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
-    origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, MDI, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt = sysDesc(data, trips, sep)
 
     if 'Ai' in data.columns.names:
         data.Ai = Ai
     if 'Bj' in data.columns.names:
         data.Bj = Bj
     data.SIM_Estimates = ests
+    data['absoluteError'] = data.SIM_Estimates - data.Data
+    data['percentError'] = (data.absoluteError/data.Data) * 100
+
+    variance = peStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
+    origins, destinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, MDI, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt, tbhat = sysDesc(data, trips, sep)
+    #llValues = llStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates, initialParams)
 
     print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
     cor = pearsonr(data.SIM_Estimates, data.Data)[0]
@@ -579,7 +664,7 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
     for x,param in enumerate(params):
         sumStr += '\nMaximum Likelihood ' + param + ' parameter: ' + str(updates[x])
         sumStr += '\n'
-    sumStr += '\nAfter ' + str(its) + 'iterations of the calibration routine with a cost/distance function of: ' +  str(cost)
+    sumStr += '\nAfter ' + str(its) + ' iterations of the calibration routine with a cost/distance function of: ' +  str(cost)
     sumStr += '\n'
     sumStr += '\nThe number of origin-destination pairs considered = ' + str(pairs)
     sumStr += '\n'
@@ -590,7 +675,7 @@ def run(observed, data, knowns, params, trips, sep, cost, factors, constraints, 
     sumStr += '\n'
     sumStr += '\nRegressing the observed interactions on the predicted interactions yields and r-squared value of: ' + str(cor*cor)
     sumStr += '\n'
-    sumStr += '\nT statistic for regression: still needs to be computed'
+    sumStr += '\nT statistic for regression: ' + str(tbhat)
     sumStr += '\n'
     sumStr += '\nPercentage deviation of observed interaction from the mean: ' + str(percentDevMean)
     sumStr += '\n'

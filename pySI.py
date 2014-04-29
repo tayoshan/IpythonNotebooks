@@ -26,12 +26,12 @@ class calibrate:
             if len(constraints) > 0:
                 for key in constraints.keys():
                     userInput.append(constraints[key])
-                userInput = set(userInput)
-                cols = set(data.columns)
+            userInput = set(userInput)
+            cols = set(data.columns)
             if userInput.issubset(cols) != True:
-                print userInput
-                print cols
-                print userInput.issubset(cols)
+                #print userInput
+                #print cols
+                #print userInput.issubset(cols)
                 sys.exit('Not all input data exists in the dataset - check spelling to ensure columns and input match')
 
     def checkFactors(self, prodCon, attCon, factors):
@@ -115,7 +115,7 @@ class calibrate:
         elif (self.prodCon == False) & (self.attCon == False):
             self.model = 'unConstrained'
 
-        self.results, cor, sumStr = entropy.run(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints, self.model)
+        self.results, cor, sumStr = entropy.run(observed, data, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints, self.model, self.initialParams)
         self.results.rsquared = cor**2
         self.results.sumStr = sumStr
 
