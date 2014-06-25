@@ -1,7 +1,8 @@
-import statsmodels.formula.api as smf
-import statsmodels.api as sm
+
+
+
 from scipy.stats.stats import pearsonr
-import patsy
+import __builtin__
 import numpy as np
 import pandas as pd
 import time
@@ -12,7 +13,9 @@ from scipy.optimize import fsolve
 from scipy.optimize import fmin
 import math
 import tkMessageBox
-
+import prettytable as pt
+import statsmodels.formula.api as smf
+import statsmodels.api as sm
 ###Regression code###
 
 def regression(data, trips, cost, sep, factors, constraints):
@@ -49,6 +52,7 @@ def regression(data, trips, cost, sep, factors, constraints):
         regstr = regstr + str(data[sep].name)
 
     results = smf.glm(regstr, data=data, family=sm.families.Poisson(link=sm.families.links.log)).fit()
+    print results.summary()
     cor = pearsonr(results.fittedvalues, data[trips])[0]
     results.rsquared = cor**2
     results.regstr = regstr
@@ -62,9 +66,11 @@ def sysDesc(data, trips, sep, origins, destinations):
     """
     calculate system/descriptive statistics of model results
     """
+    print 'a'
     numOrigins = len(data[origins].unique())
     numDestinations = len(data[destinations].unique())
     pairs = len(data)
+    print 'pairs:', pairs
     obsInt = np.sum(data[trips])
     predInt = np.sum(data['SIM_Estimates'])
     avgDist = round(np.sum(data[sep])*1.00000/pairs)
@@ -72,6 +78,8 @@ def sysDesc(data, trips, sep, origins, destinations):
     obsMeanTripLen = (np.sum(data[trips]*data[sep]))*1.00000/obsInt*1.000000
     predMeanTripLen = (np.sum(data['SIM_Estimates']*data[sep]))/predInt
     aSymSum = 0
+    print 'b'
+    '''
     for o in data[origins].unique():
         for d in data[destinations].unique():
             if o != d:
@@ -79,7 +87,10 @@ def sysDesc(data, trips, sep, origins, destinations):
     if numOrigins == numDestinations:
         aSymInd = 50.0000*aSymSum[0]/(np.sum(data[trips]))
     else: aSymInd = 'N/A'
+    '''
+    aSymInd = 'N/A'
     #three likelihood statistics
+    print 'c'
     percentDev = round(((np.sum(abs(data[trips]-data['SIM_Estimates'])))/np.sum(data[trips]))*100, 3)
     intMean = round(np.sum(data[trips]/pairs), 1)
     percentDevMean = round(((np.sum(abs(data[trips]-intMean)))/np.sum(data[trips]))*100, 3)
@@ -102,14 +113,18 @@ def sysDesc(data, trips, sep, origins, destinations):
     varPredEnt = round(((np.sum(phatij*(np.log(phatij)**2))-predEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
     varObsEnt = round(((np.sum(pij*np.log(pij)**2)-obsEntropy**2)/obsInt) + ((pairs-1)/(2*obsInt**2)), 11)
     tStatEnt = round((predEntropy-obsEntropy)/((varPredEnt+varObsEnt)**.5), 4)
-    bhat = ((np.sum(data.Data))*(np.sum(data.SIM_Estimates))/(pairs-(np.sum(data.Data*data.SIM_Estimates))))/((np.sum(data.SIM_Estimates)**2)/(pairs-(np.sum(data.SIM_Estimates**2))))
-    print bhat
-    sebhat = (np.sum((data.Data-data.SIM_Estimates)**2)/(pairs-2))/((((np.sum(data.SIM_Estimates**2))-(np.sum(data.Data**2)))/pairs)**.5)
-    print sebhat
-    tbhat = (bhat - 1)/sebhat
-    print tbhat
+    print 'd'
+    #bhat = ((np.sum(data.Data))*(np.sum(data.SIM_Estimates))/(pairs-(np.sum(data.Data*data.SIM_Estimates))))/((np.sum(data.SIM_Estimates)**2)/(pairs-(np.sum(data.SIM_Estimates**2))))
+    #print bhat
+    #sebhat = (np.sum((data.Data-data.SIM_Estimates)**2/(pairs-2)))/(((np.sum(data.SIM_Estimates**2))-(np.sum(data.Data**2))/pairs)**.5)
+    #top = ((np.sum((data.Data-data.SIM_Estimates)**2))/(pairs-2))
+    #bottom = ((np.sum(data.SIM_Estimates)**2 - ((np.sum(data.Data)**2) / pairs))**.5)
+    #print top, bottom, top/bottom
+    #print sebhat
+    #tbhat = (bhat - 1)/(top/bottom)
+    #print tbhat
 
-    return numOrigins, numDestinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, MDI, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt, tbhat
+    return numOrigins, numDestinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, MDI, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt
 
 
 def llStats(PV, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates, initialParams):
@@ -117,7 +132,7 @@ def llStats(PV, data, params, factors, trips, sep, cost, model, constraints, kno
     calculate log-likelihood statistics for model
     """
     #calc the ll value of the fitted model with all params set to MLE's
-    ll = np.sum((data.Data/np.sum(data.Data))*np.log((data.SIM_Estimates/np.sum(data.SIM_Estimates))))
+    ll = np.sum((data[trips]/np.sum(data[trips]))*np.log((data.SIM_Estimates/np.sum(data.SIM_Estimates))))
     #for each parameter, set value to initial value and the rest to their MLE
     newlls = []
     lambs = []
@@ -127,10 +142,10 @@ def llStats(PV, data, params, factors, trips, sep, cost, model, constraints, kno
         #calc new ll value for param
         buildLLFunctions(newPV, data, params, factors, trips, sep, cost, model, constraints, knowns)
         data = estimateFlows(data, sep, cost, model, factors)
-        newll = np.sum((data.Data/np.sum(data.Data))*np.log((data.SIM_Estimates/np.sum(data.SIM_Estimates))))
+        newll = np.sum((data[trips]/np.sum(data[trips]))*np.log((data.SIM_Estimates/np.sum(data.SIM_Estimates))))
         newlls.append(newll)
         #calc lambda  (relative likelihood statistic) for the param
-        lamb = 2*np.sum(data.Data)*(ll-newll)
+        lamb = 2*np.sum(data[trips])*(ll-newll)
         lambs.append(lamb)
         newPV = PV
     #set all params to zero
@@ -139,12 +154,12 @@ def llStats(PV, data, params, factors, trips, sep, cost, model, constraints, kno
     #then calc the ll value with all params set to zero
     buildLLFunctions(newPV, data, params, factors, trips, sep, cost, model, constraints, knowns)
     data = estimateFlows(data, sep, cost, model, factors)
-    llZero = np.sum((data.Data/np.sum(data.Data))*np.log((data.SIM_Estimates/np.sum(data.SIM_Estimates))))
+    llZero = np.sum((data[trips]/np.sum(data[trips]))*np.log((data.SIM_Estimates/np.sum(data.SIM_Estimates))))
     N = len(data)
     z = len(params)
     rho = 1 - (ll/llZero)
     adjRho = 1 - ((ll/(N-z))/(llZero/N))
-    llMean = np.sum((data.Data/np.sum(data.Data))*np.log((np.sum(data.SIM_Estimates)/len(data.SIM_Estimates))/np.sum(data.SIM_Estimates)))
+    llMean = np.sum((data[trips]/np.sum(data[trips]))*np.log((np.sum(data.SIM_Estimates)/len(data.SIM_Estimates))/np.sum(data.SIM_Estimates)))
     return ll, newlls, lambs, llZero, rho, adjRho, llMean
 
 
@@ -166,13 +181,13 @@ def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, kno
     elif len(PV) > 1:
         counter = 0
         varMatrix = np.zeros((len(PV),len(PV)))
-        print PV
+        #print PV
         for x, param in enumerate(PV):
 
             varParams = list(PV)
             varParams[x] = varParams[x] + .01
             varMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=True)
-        print varMatrix
+        #print varMatrix
 
         #Do not take the negative of the inverse of the matrix as instructed in Williams and Fotheringham 1984, they switched the order of the terms of ll equation and I did not
         return np.sqrt(np.linalg.inv(np.transpose(varMatrix)).diagonal())
@@ -392,7 +407,7 @@ def balanceFactors(data, sep, cost, factors, constraints, model):
     """
     its = 0
     cnvg = 1
-    while cnvg > .0001:
+    while cnvg > .001:
         its = its + 1
         #If model is prod or doubly constrained
         if model != 'attConstrained':
@@ -426,6 +441,7 @@ def balanceFactors(data, sep, cost, factors, constraints, model):
                 data["OldBj"] = data["Bj"]
         cnvg = np.sum(data["diff"])
         #print cnvg, its
+
     return data
 
 #Function to Calculate Tij' (flow estimates)
@@ -663,140 +679,149 @@ def run(observed, data, origins, destinations, knowns, params, trips, sep, cost,
     its = 0
 
     #To avoid potential errors
-    if abs(estimates-observed) == 0:
-        sys.exit('Estimated values are equal to observed data flows. Ensure model type is not production/attraction constrained with only one origin/destination representing the total out/in flow')
+    if abs(estimates-observed) != 0:
 
-    #While optimization convergence is not met
-    while abs(estimates - observed) > 1:
+        #While optimization convergence is not met
+        print estimates, observed
+        while abs(estimates - observed) > .001:
 
-        #make list of single param values from pandas dataframe vector for each param
-        paramSingle = []
-        for param in params:
-            if param != 'beta':
-                paramSingle.append(data[str(param) + 'Param'].ix[0])
-            else:
-                paramSingle.append(data[param].ix[0])
+            #make list of single param values from pandas dataframe vector for each param
+            paramSingle = []
+            for param in params:
+                if param != 'beta':
+                    paramSingle.append(data[str(param) + 'Param'].ix[0])
+                else:
+                    paramSingle.append(data[param].ix[0])
 
-        #run an iteration of scipy optimization solver
-        updates = fsolve(buildLLFunctions, paramSingle, (data, params, factors, trips, sep, cost, model, constraints, knowns))
-        #print updates, abs(estimates - observed)
+            #run an iteration of scipy optimization solver
+            updates = fsolve(buildLLFunctions, paramSingle, (data, params, factors, trips, sep, cost, model, constraints, knowns))
+            #print updates, abs(estimates - observed)
 
-        #format updates param values
-        for x, each in enumerate(params):
-            updates[x] = round(updates[x], 7)
+            #format updates param values
+            for x, each in enumerate(params):
+                updates[x] = round(updates[x], 7)
 
-        #re-balance and calculate estimates
-        if model != 'unConstrained':
-            data = balanceFactors(data, sep, cost, factors, constraints, model)
-        data = estimateFlows(data, sep, cost, model, factors)
-        estimates = estimateCum(data, knowns)
+            #re-balance and calculate estimates
+            if model != 'unConstrained':
+                data = balanceFactors(data, sep, cost, factors, constraints, model)
+            data = estimateFlows(data, sep, cost, model, factors)
+            estimates = estimateCum(data, knowns)
 
-        its += 1
+            its += 1
 
-        #If more than 100 optimization runs than exit - no convergence
-        if its > 100:
-            break
-    print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
-    #To ensure values of finished optimization are preserved after statistics are calculated - can change these values
-    if 'Ai' in data.columns.names:
-        Ai = data.Ai.values.copy()
-    if 'Bj' in data.columns.names:
-        Bj = data.Bj.values.copy()
-    ests = data.SIM_Estimates.values.copy()
+            #If more than 100 optimization runs than exit - no convergence
+            if its > 100:
+                break
+        print "After " + str(its) + " runs, beta is : " + str(data["beta"].ix[0])
 
-    for x, each in enumerate(params):
-        updates[x] = round(updates[x], 7)
-    finalParams = updates.copy()
+        #To ensure values of finished optimization are preserved after statistics are calculated - can change these values
+        if 'Ai' in data.columns.names:
+            Ai = data.Ai.values.copy()
+        if 'Bj' in data.columns.names:
+            Bj = data.Bj.values.copy()
 
+        ests = data.SIM_Estimates.values.copy()
+        print '1'
+        new = ''
+        cor = 0
 
-    #calculate statistics and output of model
-    data['absoluteError'] = data.SIM_Estimates - data.Data
-    data['percentError'] = (data.absoluteError/data.Data) * 100
-    variance = peStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
-    numOrigins, numDestinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, MDI, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt, tbhat = sysDesc(data, trips, sep, origins, destinations)
-    ll, newlls, lambs, llZero, rho, adjRho, llMean = llStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates, initialParams)
+        try:
+            for x, each in enumerate(params):
+                updates[x] = round(updates[x], 7)
+            finalParams = updates.copy()
+            #calculate statistics and output of model
+            data['absoluteError'] = data.SIM_Estimates - data[trips]
+            data['percentError'] = (data.absoluteError/data[trips]) * 100
+            numOrigins, numDestinations, pairs, obsInt, predInt, avgDist, avgDistTrav, obsMeanTripLen, predMeanTripLen, aSymInd, percentDev, percentDevMean, percentDevRed, pij, phatij, infoGain, psiStat, MDI, srmse, maxEntropy, predEntropy, obsEntropy, diffPredEnt, diffObsEnt, diffEntropy, entropyRS, varPredEnt, varObsEnt, tStatEnt = sysDesc(data, trips, sep, origins, destinations)
+            variance = peStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates)
+            ll, newlls, lambs, llZero, rho, adjRho, llMean = llStats(updates, data, params, factors, trips, sep, cost, model, constraints, knowns, estimates, initialParams)
+            print '2'
+            if 'Ai' in data.columns.names:
+                data.Ai = Ai
+            if 'Bj' in data.columns.names:
+                data.Bj = Bj
+            data.SIM_Estimates = ests
+            cor = pearsonr(data.SIM_Estimates, data[trips])[0]
+            print 'r-squared', str(cor*cor)
 
+            descStats = pt.PrettyTable(["Statistic", "Value"])
+            descStats.align["Statistic"] = 'l'
+            descStats.align["Value"] = 'l'
+            descStats.padding_width = 1
+            descStats.add_row(["Observed Mean Trip Length", str(obsMeanTripLen)])
+            descStats.add_row(["Predicted Mean Trip Length", str(predMeanTripLen)])
+            descStats.add_row(["# of Origin-Destination Pairs", str(pairs)])
+            descStats.add_row(["Total Observed Interaction", str(obsInt)])
+            descStats.add_row(["Total Predicted Interaction", str(predInt)])
+            descStats.add_row(["Asymmetry Index", str(aSymInd)])
+            #print descStats
+            paramEsts = pt.PrettyTable(["Statistic", "Value"])
+            paramEsts.align["Statistic"] = 'l'
+            paramEsts.align["Value"] = 'l'
+            paramEsts.padding_width = 1
+            for x,param in enumerate(params):
+                paramEsts.add_row([param+" Parameter Estimate", str(finalParams[x])])
+            for x,param in enumerate(params):
+                paramEsts.add_row(["Standard Error of " + param, str(variance[x])])
+            paramEsts.add_row(["Log-Likelihood with All Params", str(ll)])
+            for x,param in enumerate(params):
+                paramEsts.add_row(["Log-Likelihood without "+ param, str(newlls[x])])
+                paramEsts.add_row(["Lambda LL Statistic for "+ param, str(lambs[x])])
+            #print paramEsts
+            goodnessFit = pt.PrettyTable(["Statistic", "Value"])
+            goodnessFit.align["Statistic"] = 'l'
+            goodnessFit.align["Value"] = 'l'
+            goodnessFit.padding_width = 1
+            goodnessFit.add_row(["R-Squared", str(cor*cor)])
+            goodnessFit.add_row(["T-Statistic of R-Squared", "Not computed"])
+            goodnessFit.add_row(["% Deviation of Observed from Mean", str(percentDevMean)])
+            goodnessFit.add_row(["% Deviation of Predicted from Observed", str(percentDev)])
+            goodnessFit.add_row(["% Reductin in Deviation ", str(percentDevRed)])
+            goodnessFit.add_row(["Ayeni S Information Statistic (PSI)", str(psiStat)])
+            goodnessFit.add_row(["Minimum Discriminant Information Stat", str(MDI)])
+            goodnessFit.add_row(["SRMSE Statistic", str(srmse)])
+            goodnessFit.add_row(["Max Entropy for " + str(pairs) + " Cases", str(maxEntropy)])
+            goodnessFit.add_row(["The Entropy of Predicted Data", str(predEntropy)])
+            goodnessFit.add_row(["The Entropy of Observed Data", str(obsEntropy)])
+            goodnessFit.add_row(["Max Entropy - Predicted Data Entropy", str(diffPredEnt)])
+            goodnessFit.add_row(["Entropy of Predicted - Entropy of Observed", str(diffEntropy)])
+            goodnessFit.add_row(["Entropy Ratio Statistic", str(entropyRS)])
+            goodnessFit.add_row(["Variance of Entropy of Predicted Data", str(varPredEnt)])
+            goodnessFit.add_row(["Variance of Entropy of Observed Data", str(varObsEnt)])
+            goodnessFit.add_row(["T-Statistic for Absolute Entropy Difference", str(tStatEnt)])
+            goodnessFit.add_row(["Information Gain Statistic", str(infoGain)])
+            goodnessFit.add_row(["Rho-Squared Statistic", str(rho)])
+            goodnessFit.add_row(["Adjusted Rho-Squared Statistic", str(adjRho)])
+            goodnessFit.add_row(["Likelihood Value of Mean Model", str(llMean)])
+            new += '\n'
+            new += '\nModel type: ' + str(model)
+            new += '\nWith ' + str(numOrigins) + ' origins and ' + str(numDestinations) + ' destinations.'
+            new += '\n'
+            new += '\nAfter ' + str(its) + ' iterations of the calibration routine,'
+            new += '\nWith a cost/distance function of: ' +  str(cost)
+            new += '\n'
+            new += '\nThe number of origin-destination pairs considered = ' + str(pairs)
+            new += '\n'
+            new += "\nSystem Descriptive Statistics\n"
+            new += descStats.get_string()
+            new += '\n\n'
+            new += "Parameter Estimates and Associated Statistics\n"
+            new += paramEsts.get_string()
+            new += '\n\n'
+            new += "Goodness-of-fit Statistics\n"
+            new += goodnessFit.get_string()
+            print new
 
-    if 'Ai' in data.columns.names:
-        data.Ai = Ai
-    if 'Bj' in data.columns.names:
-        data.Bj = Bj
-    data.SIM_Estimates = ests
-    cor = pearsonr(data.SIM_Estimates, data.Data)[0]
-    sumStr = ''
-    sumStr += '\n'
-    sumStr += '\nModel type: ' + str(model)
-    sumStr += '\nWith ' + str(origins) + ' origins and ' + str(destinations) + ' destinations.'
-    sumStr += '\n'
-    sumStr += '\nThe observed mean trip length: ' +  str(obsMeanTripLen)
-    sumStr += '\nThe predicted mean trip length: ' + str(predMeanTripLen)
-    sumStr += '\n'
-    for x,param in enumerate(params):
-        sumStr += '\nMaximum Likelihood ' + param + ' parameter: ' + str(finalParams[x])
-        sumStr += '\n'
-    sumStr += '\nAfter ' + str(its) + ' iterations of the calibration routine with a cost/distance function of: ' +  str(cost)
-    sumStr += '\n'
-    sumStr += '\nThe number of origin-destination pairs considered = ' + str(pairs)
-    sumStr += '\n'
-    sumStr += '\nThe total interactions observed: ' + str(obsInt)
-    sumStr += '\nThe total interactions predicted: ' + str(predInt)
-    sumStr += '\n'
-    sumStr += '\nThe Asymmetry Index for this interaction data: ' + str(aSymInd)
-    sumStr += '\n'
-    sumStr += '\nRegressing the observed interactions on the predicted interactions yields and r-squared value of: ' + str(cor*cor)
-    sumStr += '\n'
-    sumStr += '\nT statistic for regression: ' + str(tbhat)
-    sumStr += '\n'
-    sumStr += '\nPercentage deviation of observed interaction from the mean: ' + str(percentDevMean)
-    sumStr += '\n'
-    sumStr += '\nPercentage deviation of predicted interaction from the observed interaction: ' + str(percentDev)
-    sumStr += '\n'
-    sumStr += '\nPercentage reduction in deviation: ' + str(percentDevRed)
-    sumStr += '\n'
-    sumStr += '\nAyeni S Information Statistic (psi) = ' + str(psiStat)
-    sumStr += '\n'
-    sumStr += '\nMinimum Discriminant Information Statistic: ' + str(MDI)
-    sumStr += '\n'
-    sumStr += '\nThe standardied root mean square error statistic: ' + str(srmse)
-    sumStr += '\n'
-    sumStr += '\nThe maximum entropy for ' + str(pairs) + ' cases: ' + str(maxEntropy)
-    sumStr += '\nThe entropy of the predicted interactions: ' + str(predEntropy)
-    sumStr += '\nThe entropy of the observed interactions: ' + str(obsEntropy)
-    sumStr += '\n'
-    sumStr += '\nMaximum entropy - entropy of predicted interactions: ' + str(diffPredEnt)
-    sumStr += '\n'
-    sumStr += '\nEntropy of predicted interactions - entropy of observed interactions: ' + str(diffEntropy)
-    sumStr += '\n'
-    sumStr += '\nEntropy ratio statistic: ' + str(entropyRS)
-    sumStr += '\n'
-    sumStr += '\nVariance of the entropy of predicted interactions: ' + str(varPredEnt)
-    sumStr += '\n'
-    sumStr += '\nVariance of the entropy of observed interactions: ' + str(varObsEnt)
-    sumStr += '\n'
-    sumStr += '\nT statistic for the absolute entropy difference: ' + str(tStatEnt)
-    sumStr += '\n'
-    sumStr += '\nInformation gain statistic: ' + str(infoGain)
-    sumStr += '\n'
-    sumStr += '\nAverage distance traveled in system: ' + str(avgDistTrav)
-    sumStr += '\nAverage origin-destination separation: ' + str(avgDist)
-    sumStr += '\n'
-    for x, param, in enumerate(params):
-        sumStr += '\nStandard error of the ' + str(param) + ' parameter: ' + str(variance[x])
-        sumStr += '\n'
-    sumStr += '\nThe log-likelihood value of the fitted model with all parameters: ' + str(ll)
-    sumStr += '\n'
-    for x, param in enumerate(params):
-        sumStr += '\nThe log-likelihood value of the fitted model without the ' + str(param) + ' parameter: ' + str(newlls[x])
-        sumStr += '\n'
-        sumStr += '\nThe relative likelihood (Lambda) statistic for the ' + str(param) + ' parameter: ' + str(lambs[x])
-        sumStr += '\n'
-    sumStr += '\nThe Rho-squared statistic for the model: ' + str(rho)
-    sumStr += '\n'
-    sumStr += '\nThe adjusted Rho-squared statistic: ' + str(adjRho)
-    sumStr += '\n'
-    sumStr += '\nThe likelihood value of the mean model: ' + str(llMean)
-    sumStr += '\n'
-    return data, cor, sumStr
+        except Exception, e:
+            new += 'Please try new initial parameters - optimization cannot converge to reasonable estimate'
+            print e.__doc__
+            print e.message
+        return data, cor, new
+    else:
+        new = 'Estimated values are equal to observed data flows. Ensure model type is not production/attraction constrained with only one origin/destination representing the total out/in flow'
+        print new
+        return data, 0, new
+
 
 
 
