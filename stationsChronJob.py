@@ -15,6 +15,10 @@ stations = []
 xml = "http://www.tfl.gov.uk/tfl/syndication/feeds/cycle-hire/livecyclehireupdates.xml"
 site = url.urlopen(xml)
 soup = BeautifulSoup(site)
+
+
+
+
 for station in soup.findAll('station'):
     stations.append([int(station.id.text), float(station.long.text), float(station.lat.text)])
 stats = pd.DataFrame(stations)
