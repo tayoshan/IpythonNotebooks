@@ -166,134 +166,11 @@ class calibrate:
         return self
 
 
-'''
+
 class simulate():
     """
     Simulation class is a set of functions for simulating flows given a calibrated model or a model without parameters
     """
-    #Function to calculate Ai balancing factor values
-    def calcAi(data, sep, cost, factors, model):
-        """
-        calculate Ai balancing factor
-        """
-
-        #add distance data with appropriate functional form
-        if cost == 'exp':
-            Ai = np.exp(data[sep]*data["beta"])
-        elif cost == 'pow':
-            Ai = (data[sep]**data["beta"])
-        else:
-            sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
-
-        #Add factors
-        if factors != None:
-            for factor in factors['destinations']:
-                Ai = Ai*(data[factor]**data[factor + 'Param'])
-
-        else:
-            Ai = Ai*data['Dj']
-
-        #If model is doubly constrained add destination balancing factor
-        if model == 'dConstrained':
-            Ai = Ai*data["Bj"]
-
-
-        data["Ai"] = Ai
-
-
-
-    #Function to Calculate Bj values
-    def calcBj(data, sep, cost, factors, model):
-        """
-        calculate Bj balancing factor
-        """
-
-        #add distance data with appropriate functional form
-        if cost == 'exp':
-            Bj = np.exp(data[sep]*data["beta"])
-        elif cost == 'pow':
-            Bj = (data[sep]**data["beta"])
-        else:
-            sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
-
-        #Add factors
-        if factors != None:
-            for factor in factors['origins']:
-                Bj = Bj*(data[factor]**data[factor + 'Param'])
-
-        else:
-            Bj = Bj*data['Oi']
-
-        #If model is doubly constrained add origin balancing factor
-        if model == 'dConstrained':
-            Bj = Bj*data["Ai"]
-
-
-
-        data["Bj"] = Bj
-
-
-    #Function to check if Ai and Bj have stabilised, if not return to step 2
-    #Only get called for att, prod, and doubly constrained - not unconstrained
-    def balanceFactors(data, sep, cost, factors, constraints, model):
-        """
-        calculate balancing factors and balance the balancing factors if doubly constrained model
-        """
-        its = 0
-        cnvg = 1
-        while cnvg > .001:
-            its = its + 1
-            #If model is prod or doubly constrained
-            if model != 'attConstrained':
-                calcAi(data, sep, cost, factors, model)
-                AiBF = (data.groupby(data[constraints['production']].name).aggregate({"Ai": np.sum}))
-                AiBF["Ai"] = 1/AiBF["Ai"]
-                updates = AiBF.ix[pd.match(data[constraints['production']], AiBF.index), "Ai"]
-                data["Ai"] = updates.reset_index(level=0, drop=True) if(updates.notnull().any()) else data["Ai"]
-                #If model is prod constrained stop here - dont need to balance
-                if model == 'prodConstrained':
-                    break
-                if its == 1:
-                    data["OldAi"] = data["Ai"]
-                else:
-                    data["diff"] = abs((data["OldAi"] - data["Ai"])/data["OldAi"])
-                    data["OldAi"] = data["Ai"]
-            #If model is att or doubly constrained
-            if model != 'prodConstrained':
-                calcBj(data, sep, cost, factors, model)
-                BjBF = data.groupby(data[constraints['attraction']].name).aggregate({"Bj": np.sum})
-                BjBF["Bj"] = 1/BjBF["Bj"]
-                updates = BjBF.ix[pd.match(data[constraints['attraction']], BjBF.index), "Bj"]
-                data["Bj"] = updates.reset_index(level=0, drop=True) if(updates.notnull().any()) else data["Bj"]
-                if its == 1:
-                    #If model is att constrained stop here - dont need to balance
-                    if model == 'attConstrained':
-                        break
-                    data["OldBj"] = data["Bj"]
-                else:
-                    data["diff"] = abs((data["OldBj"] - data["Bj"])/data["OldBj"])
-                    data["OldBj"] = data["Bj"]
-            cnvg = np.sum(data["diff"])
-            #print cnvg, its
-
-    return data
-
-
-    def setDistance():
-        pass
-
-    def setFactor():
-        pass
-
-    def setOi():
-        pass
-
-    def setDj():
-        pass
-
-    def setParam():
-        pass
-
 
     def estimateFlows(self, data, sep, cost, model, factors):
         """
@@ -417,4 +294,3 @@ class simulate():
         """
         self.method = 'radiation'
         return self
-'''
