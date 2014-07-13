@@ -181,16 +181,20 @@ def peStats(PV, data, params, factors, trips, sep, cost, model, constraints, kno
     elif len(PV) > 1:
         counter = 0
         varMatrix = np.zeros((len(PV),len(PV)))
+        firstDMatrix = np.zeros((len(PV),len(PV)))
+        secondDMatrix = np.zeros((len(PV),len(PV)))
         #print PV
         for x, param in enumerate(PV):
 
             varParams = list(PV)
-            varParams[x] = varParams[x] + .01
-            varMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=True)
+
+            firstDMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=True)
+
+
         #print varMatrix
 
         #Do not take the negative of the inverse of the matrix as instructed in Williams and Fotheringham 1984, they switched the order of the terms of ll equation and I did not
-        return np.sqrt(np.linalg.inv(np.transpose(varMatrix)).diagonal())
+        return np.sqrt(np.linalg.inv(diff).diagonal())
 
 
 #Check to make sure factors all have been assigned initial parameters
