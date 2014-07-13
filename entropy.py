@@ -166,14 +166,29 @@ def peStats(paramsSingle, data, params, factors, trips, sep, cost, model, constr
         return [math.sqrt(secondD)]
     elif len(paramsSingle) > 1:
         counter = 0
+<<<<<<< HEAD
         varMatrix = np.zeros((len(paramsSingle),len(paramsSingle)))
         for x, param in enumerate(paramsSingle):
             varParams = list(paramsSingle)
             varParams[x] = varParams[x] + .01
             varMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=True)
+=======
+        varMatrix = np.zeros((len(PV),len(PV)))
+        firstDMatrix = np.zeros((len(PV),len(PV)))
+        secondDMatrix = np.zeros((len(PV),len(PV)))
+        #print PV
+        for x, param in enumerate(PV):
+
+            varParams = list(PV)
+
+            firstDMatrix[x] = buildLLFunctions(varParams, data, params, factors, trips, sep, cost, model, constraints, knowns, peM=True)
+
+
+        #print varMatrix
+>>>>>>> origin/master
 
         #Do not take the negative of the inverse of the matrix as instructed in Williams and Fotheringham 1984, they switched the order of the terms of ll equation and I did not
-        return np.sqrt(np.linalg.inv(np.transpose(varMatrix)).diagonal())
+        return np.sqrt(np.linalg.inv(diff).diagonal())
 
 #Set up balancing factors, total in/out flows, and parameters
 def setup(data, trips, sep, cost, factors, constraints, prodCon, attCon, initialParams, Oi, Dj, totalFlows):
