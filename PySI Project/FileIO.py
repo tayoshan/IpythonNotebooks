@@ -4,7 +4,7 @@
 
 # For file input and output
 
-import shapelib, dbflib
+#import shapelib, dbflib
 import numpy as np
 #import shapely
 from shapely import *#geometry

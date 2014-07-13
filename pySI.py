@@ -9,56 +9,12 @@ import sys
 
 
 
+
 class calibrate:
     """
-    Calibration class is a set of functions for estimating factors or parameters of SI models
+    Calibration class is a set calibration routines for estimating parameters of SI models
 
     """
-    '''
-    #Dont need these checks in the GUI version - only for command line API
-    def checkCols(self, data, trips, sep, factors, constraints, Oi=None, Dj=None, totalFlows=None):
-        """
-        check that all of the input exists in the data set
-        """
-        userInput = [trips, sep]
-        if Oi:
-            userInput.append(Oi)
-        if Dj:
-            userInput.append(Dj)
-        if totalFlows:
-            userInput.append(totalFlows)
-        if factors != None:
-            for key in factors.keys():
-                for factor in factors[key]:
-                    userInput.append(factor)
-        if len(constraints) > 0:
-                for key in constraints.keys():
-                    userInput.append(constraints[key])
-        userInput = set(userInput)
-        cols = set(data.columns)
-        if userInput.issubset(cols) != True:
-            #print userInput
-            #print cols
-            #print userInput.issubset(cols)
-            sys.exit('Not all input data exists in the dataset - check spelling to ensure columns and input match')
-
-
-    def checkFactors(self, prodCon, attCon, factors):
-        """
-        Make sure there are the proper factors provided given the constraints which were chosen
-        """
-
-        if (prodCon == False) & (attCon == False):
-
-            try:
-                if (len(factors['destinations']) < 1) | (len(factors['origins']) < 1):
-                    sys.exit('In an un-constrained model there must be at least one variable for the origin propulsiveness ("origins" key in factors dict) and one for the destination attractiveness ("destinations" key in factors dict)')
-            except TypeError:
-                sys.exit('In an un-constrained model there must be at least one variable for the origin propulsiveness ("origins" key in factors dict) and one for the destination attractiveness ("destinations" key in factors dict)')
-            except TypeError:
-                sys.exit('In an un-constrained model there must be at least one variable for the origin propulsiveness ("origins" key in factors dict) and one for the destination attractiveness ("destinations" key in factors dict)')
-
-   '''
 
     def __init__(self, data, origins, destinations, trips, sep, dataForm='adj', diagFilter = True, cost='pow', factors=None, constraints={}, Oi=None, Dj=None, totalFlows=None):
         """
@@ -95,10 +51,6 @@ class calibrate:
         self.status = False
         self.data[[origins, destinations]] = self.data[[origins, destinations]].astype(str)
 
-
-
-        #self.checkCols(self.data, self.trips, self.sep, self.factors, self.constraints, self.Oi, self.Dj, totalFlows)
-
         if diagFilter == True:
             if self.dataForm == 'adj':
                 self.data = self.data[self.data[self.origins] != self.data[self.destinations]].reset_index(level = 0, drop = True)
@@ -112,9 +64,17 @@ class calibrate:
         if 'attraction' in self.constraints.keys():
             self.attCon = True
 
-        #self.checkFactors(self.prodCon, self.attCon, self.factors)
+    def summary(self):
+        if self.method == 'regression':
+            print self.results.summary()
+        elif self.method == 'mle':
+            print self.results.summaryString
 
-
+    def rsquared(self):
+        if self.method == 'regression':
+            print self.results.rsquared
+        elif self.method == 'mle':
+            print self.results.rsquared
 
     def regression(self):
         """
@@ -126,10 +86,8 @@ class calibrate:
         """
         self.method = 'regression'
         self.results = entropy.regression(self.data, self.trips, self.cost, self.sep, self.factors, self.constraints)
-        #Why does results.rsquared work but it isnt tabbale in Ipython?
         self.status = True
         return self
-
 
     def mle(self, initialParams):
         """
@@ -142,12 +100,7 @@ class calibrate:
         self.method = 'mle'
         self.initialParams = initialParams
 
-
-
         observed, data, knowns, params = entropy.setup(self.data, self.trips, self.sep, self.cost, self.factors,self.constraints, self.prodCon, self.attCon, self.initialParams, self.Oi, self.Dj, self.totalFlows)
-
-        if self.factors != None:
-            entropy.checkParams(self.factors, self.initialParams)
 
         if (self.prodCon == True) & (self.attCon == True):
             self.model = 'dConstrained'
@@ -158,11 +111,11 @@ class calibrate:
         elif (self.prodCon == False) & (self.attCon == False):
             self.model = 'unConstrained'
 
-        self.results, cor, sumStr = entropy.run(observed, data, self.origins, self.destinations, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints, self.model, self.initialParams)
+        self.results, cor, summary, finalParams = entropy.run(observed, data, self.origins, self.destinations, knowns, params, self.trips, self.sep, self.cost, self.factors, self.constraints, self.model, self.initialParams)
         self.results.rsquared = cor**2
-        self.results.sumStr = sumStr
-
+        self.results.summaryString = summary
         self.status = True
+        self.finalParams = finalParams
         return self
 
 
@@ -171,56 +124,6 @@ class simulate():
     """
     Simulation class is a set of functions for simulating flows given a calibrated model or a model without parameters
     """
-
-    def estimateFlows(self, data, sep, cost, model, factors):
-        """
-        estimate flows multiplying individual model components
-        """
-
-        #add distance data with appropriate functional form
-        if cost == 'exp':
-            decay = np.exp(data[sep]*data['beta'])
-        elif cost == 'pow':
-            decay = (data[sep]**data['beta'])
-        else:
-            sys.exit("The distance/cost function must be either 'pow' or 'exp'.")
-
-        #For each type of model add in appropriate balancing factors and the factors
-
-        if model == 'dConstrained':
-            data["SIM_Estimates"] = data["Oi"]*data["Ai"]*data["Dj"]*data["Bj"]*decay
-
-            if factors != None:
-                for key in factors.keys():
-                    for factor in factors[key]:
-                        data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
-
-        elif model == 'prodConstrained':
-            data["SIM_Estimates"] = data["Oi"]*data["Ai"]*decay
-            if factors != None:
-                for factor in factors['destinations']:
-                    data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
-            else:
-                data["SIM_Estimates"] = data["SIM_Estimates"]*data['Dj']
-
-        elif model == 'attConstrained':
-            data["SIM_Estimates"] = data["Dj"]*data["Bj"]*decay
-            if factors != None:
-                for factor in factors['origins']:
-                    data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
-            else:
-                data["SIM_Estimates"] = data["SIM_Estimates"]*data['Oi']
-
-
-        elif model == 'unConstrained':
-            data["SIM_Estimates"] = decay
-            if factors != None:
-                for key in factors.keys():
-                    for factor in factors[key]:
-                        data["SIM_Estimates"] = data["SIM_Estimates"]*(data[factor]**data[str(factor) + 'Param'])
-
-        return data["SIM_Estimates"]
-
 
     def isCalibrated(self):
         if self.calibratedModel != None:
@@ -240,57 +143,119 @@ class simulate():
                 self.model = self.calibratedModel.model
 
             else:
-                print 'if passing in calibrate object it must be successfully calibrated'
+                print 'calibrate object has not been calibrated yet'
 
         else:
-                print self.params
-                self.data = self.params['data']
-                self.origins= self.params['origins']
-                self.destinations = self.params['destinations']
-                self.cost = self.params['cost']
-                #self.dataForm = self.params['dataForm']
-                self.constraints = self.params['constraints']
-                #self.factors = self.params['factors']
-                self.trips = self.params['trips']
-                self.sep = self.params['sep']
-                #self.Oi = self.params['Oi']
-                #self.Dj = self.params['Dj']
-                #self.totalFlows = self.params['totalFlows']
+                self.factors = None
+                for input in self.inputs:
+                    setattr(self, input, self.inputs[input])
+                self.data["Bj"] = 1.0
+                self.data["Ai"] = 1.0
+                self.data["OldAi"] = 10.000000000
+                self.data["OldBj"] = 10.000000000
+                self.data["diff"] = abs((self.data["OldAi"] - self.data["Ai"])/self.data["OldAi"])
 
-    def __init__(self, calibratedModel=None, **params):#data, origins, destinations, trips, sep, dataForm='adj', diagFilter = True, cost='pow', factors=None, constraints={}, Oi=None, Dj=None, totalFlows=None):
+
+    def __init__(self, calibratedModel=None, **inputs):#data, origins, destinations, trips, sep, dataForm='adj', diagFilter = True, cost='pow', factors=None, constraints={}, Oi=None, Dj=None, totalFlows=None):
         self.calibratedModel = calibratedModel
-        self.params = params
+        self.inputs = inputs
         self.isCalibrated()
 
-    def entropy(self, remove=[], setFlow={}):
+    def entropy(self, removeNode=[], setParams={}, setFactors={}):
         """
         using max entropy model with parameters derived from pySI.calibrate (regression, mle)
         """
         #Remove a node from the interaction network (removes inflows and outflows from the node)
-        if len(remove) > 0:
-            self.data = self.data[~((self.data[self.origins].isin(remove)) | (self.data[self.destinations].isin(remove)))]
+        if len(removeNode) > 0:
+            self.data = self.data[~((self.data[self.origins].isin(removeNode)) | (self.data[self.destinations].isin(removeNode)))]
+            self.data = self.data.reset_index()
+            self.data = self.data.drop('index', axis=1)
+
+        #This is to add a new node and is unfinished as it will require distances to be computed on the fly
+        #Will need to add in the addNode=[] parameter into the function
+        #if len(addNode) > 0:
+            #for node in addNode:
+                #origins = set(self.data[self.origins].unique())
+                #destinations = set(self.data[self.destinations].unique())
+                #inflows = it.product(origins, [node])
+                #outflows = it.product([node], destinations)
+
+        #Check for model type based on constraints
+        self.prodCon = False
+        self.attCon = False
+        if 'production' in self.constraints.keys():
+            self.prodCon = True
+        if 'attraction' in self.constraints.keys():
+            self.attCon = True
+
+        if (self.prodCon == True) & (self.attCon == True):
+            self.model = 'dConstrained'
+        elif (self.prodCon == True) & (self.attCon == False):
+            self.model = 'prodConstrained'
+        elif (self.prodCon == False) & (self.attCon == True):
+            self.model = 'attConstrained'
+        elif (self.prodCon == False) & (self.attCon == False):
+            self.model = 'unConstrained'
+
+        if self.model == 'prodConstrained':
+            Oi = self.data.groupby(self.data[self.constraints['production']]).aggregate({self.trips: np.sum})
+            self.data["Oi"] = Oi.ix[pd.match(self.data[self.constraints['production']], Oi.index)].reset_index()[self.trips]
+
+        if self.model == 'attConstrained':
+            Dj = self.data.groupby(self.data[self.constraints['attraction']]).aggregate({self.trips: np.sum})
+            self.data["Dj"] = Dj.ix[pd.match(self.data[self.constraints['attraction']], Dj.index)].reset_index()[self.trips]
+
+        if self.model == 'dConstrained':
+            Oi = self.data.groupby(self.data[self.constraints['production']]).aggregate({self.trips: np.sum})
+            self.data["Oi"] = Oi.ix[pd.match(self.data[self.constraints['production']], Oi.index)].reset_index()[self.trips]
+
+            Dj = self.data.groupby(self.data[self.constraints['attraction']]).aggregate({self.trips: np.sum})
+            self.data["Dj"] = Dj.ix[pd.match(self.data[self.constraints['attraction']], Dj.index)].reset_index()[self.trips]
+
+        for factor in setParams:
+            if factor == 'beta':
+                self.data['beta'] = setParams[factor]
+            self.data[factor + 'Param'] = setParams[factor]
+
+        for factor in setFactors:
+            if type(setFactors[factor]) == list:
+                for each in setFactors[factor]:
+                    association, location, val = each
+                    if association.lower() == 'origins':
+                        association = self.origins
+                    elif association.lower() == 'destinations':
+                        association = self.destinations
+                    else:
+                        print 'Please specify whether you want to change a variable associated with an origin(s) or a destination(s) using "origins" or "destinations"'
+                    self.data[factor][self.data[association] == location] = val
+            else:
+                association, location, val = setFactors[factor]
+                if association.lower() == 'origins':
+                    association = self.origins
+                elif association.lower() == 'destinations':
+                    association = self.destinations
+                else:
+                    print 'Please specify whether you want to change a variable associated with an origin(s) or a destination(s) using "origins" or "destinations"'
+                self.data[factor][self.data[association] == location] = val
 
 
-        for pair in setFlow:
+        self.data = entropy.balanceFactors(self.data, self.sep, self.cost, self.factors, self.constraints, self.model)
 
-            #self.data = self.data[(self.data[self.origins] == pair[0]) & (self.data[self.destinations] == pair[1])] == setFlow[pair]
-            self.data[self.trips].ix[self.data[((self.data[self.origins] == pair[0]) & (self.data[self.destinations] == pair[1]))].index[0]] = setFlow[pair]
+        self.estimates = entropy.estimateFlows(self.data, self.sep, self.cost, self.model, self.factors)
 
-
-        self.estimates = self.estimateFlows(self.data, self.sep, self.cost, self.model, self.factors)
-
-
-
-    def gravity(self):
-        """
-        basic gravity model without any parameters
-        """
-        self.method = 'gravity'
-        return self
-
+    #To be implemented
+    '''
     def radiation(self):
         """
         Radiation model implementation
         """
         self.method = 'radiation'
         return self
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+    '''
+=======
+'''
+>>>>>>> origin/master
+>>>>>>> origin/master
